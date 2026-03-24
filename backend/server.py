@@ -25,14 +25,14 @@ db = mongo_client[os.environ['DB_NAME']]
 
 # PostgreSQL connection pool
 pg_pool = pg_pool_module.ThreadedConnectionPool(
-    minconn=2,
-    maxconn=10,
+    minconn=1,
+    maxconn=5,
     host=os.environ['PG_HOST'],
     port=int(os.environ['PG_PORT']),
     dbname=os.environ['PG_DB'],
     user=os.environ['PG_USER'],
     password=os.environ['PG_PASS'],
-    options=f"-c search_path={os.environ.get('PG_SCHEMA', 'odoo')}"
+    options=f"-c search_path={os.environ.get('PG_SCHEMA', 'odoo')} -c statement_timeout=30000"
 )
 
 app = FastAPI()

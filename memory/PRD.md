@@ -1,56 +1,55 @@
 # PRD - CRM Sales Reports Module (Ambission Industries)
 
 ## Problem Statement
-Build a CRM reports module that connects to an external PostgreSQL database (Odoo 10 POS data) to generate comprehensive sales analytics dashboards. Data from `pos.order` filtered by `is_cancel=false`, `reserva=false`, `order_cancel=false`.
+Build a CRM reports module that connects to an external PostgreSQL database (Odoo 10 POS data) to generate comprehensive sales analytics dashboards. Data from `pos.order` filtered by `is_cancel=false`, `order_cancel=false`, `reserva=false` (ventas reales).
 
 ## Architecture
 - **Backend**: FastAPI + psycopg2 connecting to external PostgreSQL (72.60.241.216:9090, db=datos, schema=odoo)
 - **Frontend**: React + Tailwind CSS + shadcn/ui + recharts
-- **Data Source**: PostgreSQL views (v_pos_line_full, v_pos_order_enriched) + raw tables
-- **No local DB storage**: All queries run directly against external PostgreSQL
+- **Data Source**: PostgreSQL views (v_pos_line_full) + raw tables
+- **Cache**: In-memory TTL cache (2 min) for query results
 
 ## User Personas
 - **Primary**: Business owner/manager at Ambission Industries S.A.C. (Peruvian clothing retail)
-- **Use Case**: Analyze POS sales data to make business decisions, compare year-over-year, track brand/store/client performance
 
 ## Core Requirements
-- Year-over-year sales comparisons
-- Filters by marca (brand), tipo (product type), tienda (store)
+- Year-over-year sales comparisons with "Hasta la fecha" option
+- Multi-select filters by marca, tipo, tienda
 - KPI indicators: total sales, orders, avg ticket, units sold
 - Export to Excel
 - Light/dark mode toggle
 
 ## What's Been Implemented (2026-03-24)
-- **Dashboard**: KPIs with YoY comparison (same period), monthly trend, sales by marca, top stores, top clients
-- **Ventas (Sales Analysis)**: Year selector badges, monthly comparison line chart, year summary table, orders by month grouped bar
-- **Productos**: Tabs for Marcas/Tipos/Tendencia, bar charts, detailed tables with % total
-- **Tiendas**: Store performance horizontal bar chart, ranking table
-- **Clientes**: Top 20 clients table, click-to-see client detail with yearly history bar chart
-- **Global Filters**: Marca, tipo, store dropdowns in header, clear filters button
-- **Theme**: Light/dark mode toggle
-- **Export**: Excel download for all report types
-- **Backend**: 13 API endpoints (/api/filters, /api/kpis, /api/sales-trend, /api/sales-by-year, /api/year-monthly, /api/sales-by-marca, /api/sales-by-tipo, /api/marca-trend, /api/sales-by-store, /api/top-clients, /api/client-years, /api/export/excel)
+
+### Iteration 1
+- Full dashboard with KPIs, charts, 5 pages
+- Backend with 13+ API endpoints
+- Excel export, dark mode
+
+### Iteration 2 (Current)
+- **Multi-select filters**: All 3 filters (marca, tipo, tienda) now accept multiple selections
+- **"Hasta la fecha" toggle**: Compares years only up to current date for fair comparison
+- **In-memory cache**: 2-minute TTL cache for faster repeated queries
+- **Fixed year chart lines**: 2021 and other old years now display correctly
+- **Connection pool optimization**: Reduced pool size, added statement timeout
+
+## Data Verification
+- **106,037 valid sales** (real) out of 140,380 total orders
+- Filtering out: 7,731 cancelled + 7,729 order_cancelled + 30,785 reservas
+- Data spans 2018-2026
+
+## Known Limitation
+- `x_tipo_resumen` field does NOT exist in the synced PostgreSQL mirror database. Only `tipo` from product_template is available.
 
 ## Prioritized Backlog
-### P0 (Done)
-- [x] PostgreSQL connection and data extraction
-- [x] Dashboard with KPIs and charts
-- [x] Year-over-year comparisons
-- [x] Filters by marca, tipo, store
-- [x] 5 pages: Dashboard, Ventas, Productos, Tiendas, Clientes
-- [x] Excel export
-- [x] Light/dark mode
-
 ### P1
 - [ ] PDF export
 - [ ] Date range picker (calendar) for custom date filtering
+- [ ] Sync x_tipo_resumen from Odoo if needed
 - [ ] Store year-over-year comparison
-- [ ] Client year-over-year comparison on Clientes page
-- [ ] Combination analysis: marca x tipo cross-tabulation
 
 ### P2
-- [ ] Data caching (Redis or in-memory) for frequently accessed queries
-- [ ] Dashboard auto-refresh interval
-- [ ] Top products (individual SKU) analysis
-- [ ] Mobile responsive layout optimization
-- [ ] Print-friendly report views
+- [ ] Redis cache for production
+- [ ] Dashboard auto-refresh
+- [ ] Individual product/SKU analysis
+- [ ] Mobile responsive optimization
