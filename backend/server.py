@@ -98,6 +98,7 @@ PO_BASE = "(po.is_cancel IS NULL OR po.is_cancel = false) AND (po.order_cancel I
 
 def vpl_from(need_store=False, need_client=False):
     base = "FROM v_pos_line_full vplf"
+    base += "\nJOIN product_template pt ON pt.odoo_id = vplf.product_tmpl_id"
     if need_store or need_client:
         base += "\nJOIN pos_order po ON po.odoo_id = vplf.order_id AND po.company_key = vplf.company_key"
     if need_store:
@@ -127,7 +128,7 @@ def add_filters(where, params, start_date=None, end_date=None, marca=None, tipo=
     if marca:
         _add_multi(where, params, "vplf.marca", marca)
     if tipo:
-        _add_multi(where, params, "vplf.tipo", tipo)
+        _add_multi(where, params, "pt.tipo_resumen", tipo)
     if store:
         _add_multi(where, params, "SPLIT_PART(sl.complete_name, '/', 2)", store)
     if year:
@@ -150,7 +151,7 @@ def root():
 @api_router.get("/filters")
 def get_filters():
     marcas = query_pg("SELECT DISTINCT marca FROM product_template WHERE marca IS NOT NULL AND TRIM(marca) != '' ORDER BY marca")
-    tipos = query_pg("SELECT DISTINCT tipo FROM product_template WHERE tipo IS NOT NULL AND TRIM(tipo) != '' ORDER BY tipo")
+    tipos = query_pg("SELECT DISTINCT tipo_resumen as tipo FROM product_template WHERE tipo_resumen IS NOT NULL AND TRIM(tipo_resumen) != '' ORDER BY tipo_resumen")
     stores = query_pg("""
         SELECT DISTINCT SPLIT_PART(complete_name, '/', 2) as store_code
         FROM stock_location WHERE usage = 'internal' AND complete_name IS NOT NULL
@@ -303,18 +304,18 @@ def get_sales_by_tipo(
 ):
     need_store = store is not None
     params = []
-    where = [VPL_BASE, "vplf.tipo IS NOT NULL"]
+    where = [VPL_BASE, "pt.tipo_resumen IS NOT NULL AND TRIM(pt.tipo_resumen) != ''"]
     add_filters(where, params, start_date, end_date, marca=marca, store=store, year=year, ytd_day=ytd_day)
     sql = f"""
         SELECT
-            vplf.tipo,
+            pt.tipo_resumen as tipo,
             COALESCE(SUM(vplf.price_subtotal), 0) as total_sales,
             COUNT(DISTINCT vplf.order_id) as order_count,
             COALESCE(SUM(vplf.qty), 0) as units_sold,
             ROUND(COALESCE(SUM(vplf.price_subtotal), 0) / NULLIF(COUNT(DISTINCT vplf.order_id), 0), 2) as avg_ticket
         {vpl_from(need_store)}
         WHERE {" AND ".join(where)}
-        GROUP BY vplf.tipo ORDER BY total_sales DESC
+        GROUP BY pt.tipo_resumen ORDER BY total_sales DESC
     """
     return query_pg(sql, params)
 
