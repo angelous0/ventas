@@ -1,34 +1,43 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* App-level styles */
+.kpi-card {
+    transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.kpi-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.nav-link {
+    transition: background-color 200ms ease, color 200ms ease;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.chart-card {
+    transition: border-color 200ms ease;
+}
+.chart-card:hover {
+    border-color: hsl(var(--accent));
 }
 
-.App-link {
-    color: #61dafb;
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+/* Table row hover */
+.data-row {
+    transition: background-color 150ms ease;
+}
+.data-row:hover {
+    background-color: hsl(var(--muted) / 0.5);
 }
