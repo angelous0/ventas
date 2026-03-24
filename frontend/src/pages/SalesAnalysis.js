@@ -70,7 +70,18 @@ export default function SalesAnalysis() {
         pivoted[row.month][`orders_${row.year}`] = row.order_count;
         pivoted[row.month][`units_${row.year}`] = row.units_sold;
       });
-      setMonthlyData(Object.values(pivoted).sort((a, b) => a.month - b.month));
+      // Calculate cumulative
+      const sorted = Object.values(pivoted).sort((a, b) => a.month - b.month);
+      const cumulative = {};
+      sorted.forEach(row => {
+        selectedYears.forEach(yr => {
+          const key = `cum_${yr}`;
+          const val = row[`sales_${yr}`];
+          cumulative[yr] = (cumulative[yr] || 0) + (val || 0);
+          row[key] = val != null ? cumulative[yr] : undefined;
+        });
+      });
+      setMonthlyData(sorted);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [selectedYears, getFilterParams, ytd, ytdDay]);
@@ -162,7 +173,55 @@ export default function SalesAnalysis() {
         </Card>
       )}
 
-      {/* Year summary table */}
+      {/* Cumulative comparison chart */}
+      {selectedYears.length > 0 && (
+        <Card className="chart-card rounded-sm" data-testid="cumulative-comparison-chart">
+          <CardHeader className="pb-2 px-6 pt-5">
+            <CardTitle className="text-[10px] tracking-[0.2em] uppercase font-semibold text-muted-foreground">
+              Ventas Acumuladas
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div style={{ width: '100%', height: 340 }}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <LineChart data={monthlyData} margin={{ top: 5, right: 20, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="month_name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} tickFormatter={(v) => v >= 1000000 ? `${(v/1000000).toFixed(1)}M` : `${(v/1000).toFixed(0)}K`} />
+                  <Tooltip content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    return (
+                      <div className="bg-background border border-border shadow-sm rounded-sm p-3 text-xs">
+                        <p className="font-medium text-foreground mb-1">{label}</p>
+                        {payload.map((p, i) => (
+                          <p key={i} className="text-muted-foreground">
+                            <span style={{ color: p.color }}>{p.name}:</span> {formatCurrency(p.value)}
+                          </p>
+                        ))}
+                      </div>
+                    );
+                  }} />
+                  <Legend wrapperStyle={{ fontSize: '11px' }} />
+                  {selectedYears.map((yr, i) => (
+                    <Line
+                      key={yr}
+                      type="monotone"
+                      dataKey={`cum_${yr}`}
+                      stroke={COLORS[i % COLORS.length]}
+                      strokeWidth={2.5}
+                      strokeDasharray={i === 0 ? undefined : undefined}
+                      dot={{ r: 3, fill: COLORS[i % COLORS.length], strokeWidth: 0 }}
+                      activeDot={{ r: 6 }}
+                      name={`${yr}`}
+                      connectNulls={false}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       <Card className="rounded-sm" data-testid="year-summary-table">
         <CardHeader className="pb-2 px-6 pt-5">
           <CardTitle className="text-[10px] tracking-[0.2em] uppercase font-semibold text-muted-foreground">
