@@ -1,0 +1,136 @@
+{
+  "project_name": "Ambission Industries - CRM Sales Reports Dashboard",
+  "theme_strategy": "Minimalist corporate/enterprise style. Light mode default with dark mode toggle. Data-heavy, high-density, analytical.",
+  "typography": {
+    "font_family_headings": "Chivo",
+    "font_family_body": "IBM Plex Sans",
+    "font_weights": "Radical weight contrast (e.g., Black 900 vs Light 300).",
+    "rules": [
+      "DO NOT use Inter, Roboto, or standard sans-serifs for headings. They smell like templates.",
+      "Headlines (>32px) MUST use tight letter spacing: 'tracking-tight' or 'tracking-tighter'.",
+      "Overlines/Labels (like 'TOTAL SALES' or 'AVG TICKET') MUST be Uppercase, Tiny, and Wide Spacing ('text-xs tracking-[0.2em] font-semibold').",
+      "Line Height: 'leading-none' for KPIs and headers, 'leading-relaxed' for body text in tables.",
+      "Use 'IBM Plex Sans' for tabular data to ensure precise numeral alignment."
+    ],
+    "imports": "@import url('https://fonts.googleapis.com/css2?family=Chivo:wght@300;400;700;900&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');"
+  },
+  "colors": {
+    "archetype": "Swiss & High-Contrast (Authority, Clarity, Truth)",
+    "description": "Functional, rigid, objective. Color is function only. The UI should be primarily monochrome (Zinc/Slate) with a sharp, vibrant primary color (Denim/Indigo) used sparingly to guide action and visualize data.",
+    "light": {
+      "background": "#FFFFFF",
+      "surface": "#F4F4F5",
+      "border": "#E4E4E7",
+      "text_primary": "#09090B",
+      "text_secondary": "#71717A",
+      "primary": "#0F172A",
+      "accent": "#4F46E5"
+    },
+    "dark": {
+      "background": "#09090B",
+      "surface": "#18181B",
+      "border": "#27272A",
+      "text_primary": "#FAFAFA",
+      "text_secondary": "#A1A1AA",
+      "primary": "#FFFFFF",
+      "accent": "#6366F1"
+    },
+    "charts_recharts_palette": [
+      "#4F46E5", 
+      "#38BDF8", 
+      "#10B981", 
+      "#F59E0B", 
+      "#F43F5E", 
+      "#8B5CF6", 
+      "#64748B"
+    ],
+    "forbidden_colors": ["#1B93A4", "#7351B7", "pure #000000", "pure #808080"]
+  },
+  "grids_and_spacing": {
+    "bento_protocol": "High Density Grid (For Dashboards / Analytics)",
+    "rules": [
+      "Base Grid: 'grid-cols-1 md:grid-cols-3 lg:grid-cols-4'.",
+      "Gap Strategy: Tight ('gap-4' or 'gap-6').",
+      "Span Logic: Summary KPIs ('col-span-1'). Primary Data/Charts ('col-span-2 row-span-2' or 'col-span-3'). Lists/Rankings ('col-span-1 row-span-2').",
+      "Every pixel utilized. Use 'h-full' on children to ensure they stretch. No jagged bottoms.",
+      "Generous Spacing inside containers: Use 'p-6' or 'p-8' inside dashboard cards to prevent text collision with borders."
+    ]
+  },
+  "surface_and_components": {
+    "style": "Grid Borders (The Technical Look) mixed with Sharp Corporate Minimalism",
+    "cards": "Cardless or flat solid background with 1px border ('border-border'). Max border-radius: 4px ('rounded-sm') or 0px ('rounded-none'). NO soft shadows.",
+    "hover_states": "Slight lift ('-translate-y-[1px]'), subtle shadow ('shadow-sm'), border color darkens.",
+    "headers": "Solid background with a hard bottom border. Sticky positioning. Must contain the global filters (Date Range, Store/Brand select).",
+    "tables": "Clean, dense. 1px subtle border on bottom of rows ('border-b border-border/40'). No side borders. Striped rows on hover ('hover:bg-muted/50').",
+    "buttons": "Sharp edges ('rounded-sm'), strong contrast. Export buttons (PDF/Excel) should be 'variant=\"outline\"' or ghost with an icon.",
+    "shadcn_overrides": "Override default Vercel-look. Reduce border-radius to 2px or 4px. Use sharp, flat interactions. DO NOT use generic soft shadows."
+  },
+  "motion_and_interactions": {
+    "philosophy": "Minimalist. Use micro-interactions for feedback. Avoid large scale bounce/spring animations. Keep it professional.",
+    "rules": [
+      "Hover states on all interactive elements: MUST explicitly set text color on hover (e.g., 'hover:bg-zinc-900 hover:text-white').",
+      "Transition effects: Use specific properties, NOT 'transition: all' (e.g., 'transition-colors duration-200 ease-in-out').",
+      "Focus states: Must have HIGHER contrast than default state."
+    ]
+  },
+  "accessibility": {
+    "contrast": "Ensure text meets APCA standards. Large text 3:1, normal text 4.5:1.",
+    "testing_attributes": "All interactive and key informational elements MUST include a 'data-testid' attribute (kebab-case, role-based, NOT appearance-based).",
+    "charts": "Provide tooltips on Recharts with readable contrast (solid bg, sharp border). If possible, use patterns or distinct hues for color-blind friendliness."
+  },
+  "media_and_assets": {
+    "icons": "Use 'lucide-react' for clean, neutral corporate icons. Use 'iconoir-react' if you want a thinner, sharper tech look. Install command: 'yarn add iconoir-react'.",
+    "images_for_empty_states_or_placeholders": [
+      {
+        "category": "Retail Fashion Environment",
+        "image_url": "https://images.unsplash.com/photo-1707141784065-493c0f7dc953?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1ODF8MHwxfHNlYXJjaHwxfHxyZXRhaWwlMjBjbG90aGluZyUyMHN0b3JlfGVufDB8fHx8MTc3NDM2OTg5M3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Clean, modern clothing rack. Use for empty state or general cover image."
+      },
+      {
+        "category": "Store/Client Avatar",
+        "image_url": "https://images.pexels.com/photos/5698851/pexels-photo-5698851.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Neatly arranged shirts on a rack. Can be used for store location thumbnail."
+      }
+    ]
+  },
+  "data_visualization_strategy": {
+    "library": "recharts",
+    "rules": [
+      "DO NOT use 3D pie charts or heavy gradients in charts.",
+      "Lines/Bars: Flat colors, sharp corners (radius 0 on bars).",
+      "Axes: Mute axis lines ('stroke-muted'). Remove unnecessary grid lines or use sparse dashed lines ('stroke-dasharray=\"3 3\"').",
+      "Tooltips: Custom content wrapper with 'bg-background border-border shadow-sm rounded-sm p-3'.",
+      "Responsive: Wrap all charts in 'ResponsiveContainer'."
+    ]
+  },
+  "universal_guidelines_for_main_agent": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur) where applicable, like sticky headers.",
+    "You MUST NOT apply universal transition. Eg: 'transition: all'. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms.",
+    "You MUST NOT center align the app container, ie do not add '.App { text-align: center; }' in the css file. This disrupts the human natural reading flow of text.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style. (For this dashboard, use sharp edges: rounded-sm or rounded-none).",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯📚🎭🎬🎪🎉🎊🎁🎀🎂🍰🎈🎨🎰💰💵💳🏦💎🪙💸🤑📊📈📉💹🔢🏆🥇 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Create new components that match the style and conventions of existing components when needed.",
+    "Components MUST use named exports (export const ComponentName = ...).",
+    "Pages MUST use default exports (export default function PageName() {...}).",
+    "Use 'sonner' for toasts. Sonner component is located in '/app/src/components/ui/sonner.tsx'."
+  ],
+  "instructions_to_main_agent": [
+    "Tech Stack: React JS (NOT TS), Tailwind CSS, Shadcn UI, Recharts, Vite.",
+    "File Extension: Create '.jsx' or '.js' files. DO NOT USE TYPE ANNOTATIONS.",
+    "Theme Provider: Implement a robust Light/Dark theme provider that toggles the '.dark' class on the HTML document element.",
+    "Layout Structure: Create a Sidebar (fixed width, border-r) and Main Content area (flex-1). The header should be sticky with a glassmorphism backdrop.",
+    "Data Mocking: Since the backend is a read-only PostgreSQL FastAPI, mock the API responses in the frontend for now to visualize the POS sales data correctly. Structure the data carefully with fields: id, date, total, marca, tipo, store, client, etc.",
+    "Export: Mock the export functionality with a sonner toast saying 'Exporting PDF...' or 'Exporting Excel...'.",
+    "Shadcn Forms/Select: Use these for the date range picker, brand (marca) filter, and store filter in the header.",
+    "CRITICAL: Do not use complete transparent background in header, overlays, any surface that has content under it.",
+    "CRITICAL: Ensure every component has a 'data-testid' for testing."
+  ]
+}
