@@ -100,7 +100,7 @@ export default function Products() {
           <Card className="chart-card rounded-sm" data-testid="marca-bar-chart">
             <CardContent className="pt-6 px-4 pb-4">
               <div className="h-[320px]">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <BarChart data={marcas} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                     <XAxis dataKey="marca" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
@@ -156,7 +156,7 @@ export default function Products() {
           <Card className="chart-card rounded-sm" data-testid="tipo-bar-chart">
             <CardContent className="pt-6 px-4 pb-4">
               <div className="h-[320px]">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <BarChart data={tipos} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                     <XAxis dataKey="tipo" tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} angle={-35} textAnchor="end" height={60} />
@@ -207,7 +207,7 @@ export default function Products() {
             </CardHeader>
             <CardContent className="px-4 pb-4">
               <div className="h-[400px]">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <LineChart data={marcaTrend} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                     <XAxis dataKey="year" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />

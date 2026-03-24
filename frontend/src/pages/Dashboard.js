@@ -40,9 +40,14 @@ export default function Dashboard() {
   useEffect(() => {
     const fp = getFilterParams();
     setLoading(true);
+    // Compare same period: YTD this year vs same period last year
+    const now = new Date();
+    const monthDay = `-${String(now.getMonth() + 2).padStart(2, '0')}-01`; // Start of next month
+    const currentEnd = `${currentYear}${monthDay}`;
+    const prevEnd = `${prevYear}${monthDay}`;
     Promise.all([
-      api.getKpis({ ...fp, start_date: `${currentYear}-01-01`, end_date: `${currentYear + 1}-01-01` }),
-      api.getKpis({ ...fp, start_date: `${prevYear}-01-01`, end_date: `${prevYear + 1}-01-01` }),
+      api.getKpis({ ...fp, start_date: `${currentYear}-01-01`, end_date: currentEnd }),
+      api.getKpis({ ...fp, start_date: `${prevYear}-01-01`, end_date: prevEnd }),
       api.getSalesTrend({ ...fp, year: currentYear }),
       api.getSalesByMarca({ ...fp, year: currentYear }),
       api.getSalesByStore({ ...fp, year: currentYear }),
@@ -96,8 +101,8 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <div className="h-[280px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[280px]" style={{ minHeight: '280px' }}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minWidth={0}>
                 <BarChart data={trend} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="month_name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
@@ -118,7 +123,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="px-2 pb-4">
             <div className="h-[280px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={marcas} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}K`} />
@@ -144,7 +149,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent className="px-2 pb-4">
             <div className="h-[260px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={stores} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}K`} />

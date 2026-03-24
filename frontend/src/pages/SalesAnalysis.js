@@ -36,7 +36,7 @@ export default function SalesAnalysis() {
   // Initialize selected years
   useEffect(() => {
     if (options.years.length > 0 && selectedYears.length === 0) {
-      const yrs = options.years.filter(y => y >= currentYear - 2).sort();
+      const yrs = options.years.filter(y => y >= currentYear - 1).sort();
       setSelectedYears(yrs.length > 0 ? yrs : options.years.slice(0, 3));
     }
   }, [options.years, currentYear, selectedYears.length]);
@@ -122,7 +122,7 @@ export default function SalesAnalysis() {
         </CardHeader>
         <CardContent className="px-4 pb-4">
           <div className="h-[360px]">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <LineChart data={monthlyData} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                 <XAxis dataKey="month_name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
@@ -204,7 +204,7 @@ export default function SalesAnalysis() {
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={monthlyData} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="month_name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />

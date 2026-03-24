@@ -73,7 +73,7 @@ export default function Stores() {
       <Card className="chart-card rounded-sm" data-testid="store-bar-chart">
         <CardContent className="pt-6 px-4 pb-4">
           <div className="h-[400px]">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <BarChart data={stores} layout="vertical" margin={{ top: 5, right: 20, left: 5, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${(v/1000).toFixed(0)}K`} />

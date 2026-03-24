@@ -166,7 +166,7 @@ export default function Clients() {
 
                 {clientYears.length > 0 && (
                   <div className="h-[200px]" data-testid="client-year-chart">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                       <BarChart data={clientYears} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                         <XAxis dataKey="year" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
