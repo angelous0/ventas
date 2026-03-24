@@ -4,6 +4,8 @@ import { api, formatCurrency, formatNumber, calcChange, COLORS, MONTHS } from '.
 import { KpiCard } from '../components/KpiCard';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Skeleton } from '../components/ui/skeleton';
+import { Switch } from '../components/ui/switch';
+import { Label } from '../components/ui/label';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
@@ -33,25 +35,24 @@ export default function Dashboard() {
   const [stores, setStores] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [ytd, setYtd] = useState(true);
 
   const currentYear = new Date().getFullYear();
   const prevYear = currentYear - 1;
+  const today = new Date();
+  const ytdDay = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
   useEffect(() => {
     const fp = getFilterParams();
+    const ytdParam = ytd ? ytdDay : undefined;
     setLoading(true);
-    // Compare same period: YTD this year vs same period last year
-    const now = new Date();
-    const monthDay = `-${String(now.getMonth() + 2).padStart(2, '0')}-01`; // Start of next month
-    const currentEnd = `${currentYear}${monthDay}`;
-    const prevEnd = `${prevYear}${monthDay}`;
     Promise.all([
-      api.getKpis({ ...fp, start_date: `${currentYear}-01-01`, end_date: currentEnd }),
-      api.getKpis({ ...fp, start_date: `${prevYear}-01-01`, end_date: prevEnd }),
+      api.getKpis({ ...fp, start_date: `${currentYear}-01-01`, end_date: `${currentYear + 1}-01-01`, ytd_day: ytdParam }),
+      api.getKpis({ ...fp, start_date: `${prevYear}-01-01`, end_date: `${prevYear + 1}-01-01`, ytd_day: ytdParam }),
       api.getSalesTrend({ ...fp, year: currentYear }),
-      api.getSalesByMarca({ ...fp, year: currentYear }),
-      api.getSalesByStore({ ...fp, year: currentYear }),
-      api.getTopClients({ ...fp, year: currentYear, limit: 5 }),
+      api.getSalesByMarca({ ...fp, year: currentYear, ytd_day: ytdParam }),
+      api.getSalesByStore({ ...fp, year: currentYear, ytd_day: ytdParam }),
+      api.getTopClients({ ...fp, year: currentYear, limit: 5, ytd_day: ytdParam }),
     ]).then(([kD, pD, tD, mD, sD, cD]) => {
       setKpis(kD);
       setPrevKpis(pD);
@@ -61,7 +62,7 @@ export default function Dashboard() {
       setClients(cD);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [getFilterParams, currentYear, prevYear]);
+  }, [getFilterParams, currentYear, prevYear, ytd, ytdDay]);
 
   if (loading) {
     return (
@@ -79,9 +80,17 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6" data-testid="dashboard-page">
-      <div>
-        <h1 className="text-2xl font-black tracking-tight font-heading leading-none">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">Resumen de ventas {currentYear}</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-black tracking-tight font-heading leading-none">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Resumen de ventas {currentYear} {ytd ? `(hasta ${today.getDate()}/${today.getMonth() + 1})` : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-2" data-testid="ytd-toggle-wrapper">
+          <Switch id="ytd" checked={ytd} onCheckedChange={setYtd} data-testid="ytd-toggle" />
+          <Label htmlFor="ytd" className="text-xs text-muted-foreground cursor-pointer">Hasta la fecha</Label>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -101,8 +110,8 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
-            <div className="h-[280px]" style={{ minHeight: '280px' }}>
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minWidth={0}>
+            <div style={{ width: '100%', height: 280 }}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={trend} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="month_name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
@@ -122,7 +131,7 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-2 pb-4">
-            <div className="h-[280px]">
+            <div style={{ width: '100%', height: 280 }}>
               <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={marcas} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
@@ -148,7 +157,7 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="px-2 pb-4">
-            <div className="h-[260px]">
+            <div style={{ width: '100%', height: 260 }}>
               <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <BarChart data={stores} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />

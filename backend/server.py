@@ -4,6 +4,8 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import time
+import hashlib
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timezone
@@ -36,8 +38,22 @@ pg_pool = pg_pool_module.ThreadedConnectionPool(
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ── Cache ────────────────────────────────────────────────
+_cache = {}
+CACHE_TTL = 120  # 2 minutes
+
+def _cache_key(sql, params):
+    raw = f"{sql}:{params}"
+    return hashlib.md5(raw.encode()).hexdigest()
+
+def _cache_clean():
+    now = time.time()
+    expired = [k for k, v in _cache.items() if now - v['ts'] > CACHE_TTL * 3]
+    for k in expired:
+        del _cache[k]
 
 # ── Helpers ──────────────────────────────────────────────
 
@@ -49,7 +65,12 @@ def get_pg():
     finally:
         pg_pool.putconn(conn)
 
-def query_pg(sql, params=None):
+def query_pg(sql, params=None, use_cache=True):
+    if use_cache:
+        key = _cache_key(sql, params)
+        if key in _cache and time.time() - _cache[key]['ts'] < CACHE_TTL:
+            return _cache[key]['data']
+
     with get_pg() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params or [])
@@ -65,7 +86,11 @@ def query_pg(sql, params=None):
                     else:
                         d[cols[i]] = val
                 result.append(d)
-            return result
+
+    if use_cache:
+        _cache_clean()
+        _cache[key] = {'data': result, 'ts': time.time()}
+    return result
 
 # Valid sales filters
 VPL_BASE = "(vplf.is_cancelled IS NULL OR vplf.is_cancelled = false) AND (vplf.reserva IS NULL OR vplf.reserva = false)"
@@ -81,7 +106,18 @@ def vpl_from(need_store=False, need_client=False):
         base += "\nJOIN res_partner rp ON rp.odoo_id = po.partner_id"
     return base
 
-def add_filters(where, params, start_date=None, end_date=None, marca=None, tipo=None, store=None, year=None, years=None, date_col="vplf.date_order"):
+def _add_multi(where, params, field, value_csv):
+    """Add IN clause for comma-separated values."""
+    vals = [v.strip() for v in value_csv.split(',') if v.strip()]
+    if len(vals) == 1:
+        where.append(f"{field} = %s")
+        params.append(vals[0])
+    else:
+        ph = ','.join(['%s'] * len(vals))
+        where.append(f"{field} IN ({ph})")
+        params.extend(vals)
+
+def add_filters(where, params, start_date=None, end_date=None, marca=None, tipo=None, store=None, year=None, years=None, ytd_day=None, date_col="vplf.date_order"):
     if start_date:
         where.append(f"{date_col} >= %s")
         params.append(start_date)
@@ -89,14 +125,11 @@ def add_filters(where, params, start_date=None, end_date=None, marca=None, tipo=
         where.append(f"{date_col} < %s")
         params.append(end_date)
     if marca:
-        where.append("vplf.marca = %s")
-        params.append(marca)
+        _add_multi(where, params, "vplf.marca", marca)
     if tipo:
-        where.append("vplf.tipo = %s")
-        params.append(tipo)
+        _add_multi(where, params, "vplf.tipo", tipo)
     if store:
-        where.append("SPLIT_PART(sl.complete_name, '/', 2) = %s")
-        params.append(store)
+        _add_multi(where, params, "SPLIT_PART(sl.complete_name, '/', 2)", store)
     if year:
         where.append(f"EXTRACT(YEAR FROM {date_col})::int = %s")
         params.append(int(year))
@@ -104,12 +137,15 @@ def add_filters(where, params, start_date=None, end_date=None, marca=None, tipo=
         ph = ','.join(['%s'] * len(years))
         where.append(f"EXTRACT(YEAR FROM {date_col})::int IN ({ph})")
         params.extend([int(y) for y in years])
+    if ytd_day:
+        where.append(f"TO_CHAR({date_col}, 'MM-DD') <= %s")
+        params.append(ytd_day)
 
 # ── Endpoints ────────────────────────────────────────────
 
 @api_router.get("/")
 def root():
-    return {"message": "CRM Reports API"}
+    return {"message": "CRM Reports API", "status": "ok", "sales_filter": "is_cancel=false, order_cancel=false, reserva=false (ventas reales)"}
 
 @api_router.get("/filters")
 def get_filters():
@@ -134,12 +170,13 @@ def get_kpis(
     end_date: Optional[str] = Query(None),
     marca: Optional[str] = Query(None),
     tipo: Optional[str] = Query(None),
-    store: Optional[str] = Query(None)
+    store: Optional[str] = Query(None),
+    ytd_day: Optional[str] = Query(None)
 ):
     need_store = store is not None
     params = []
     where = [VPL_BASE]
-    add_filters(where, params, start_date, end_date, marca, tipo, store)
+    add_filters(where, params, start_date, end_date, marca, tipo, store, ytd_day=ytd_day)
     sql = f"""
         SELECT
             COALESCE(SUM(vplf.price_subtotal), 0) as total_sales,
@@ -160,12 +197,13 @@ def get_sales_trend(
     end_date: Optional[str] = Query(None),
     marca: Optional[str] = Query(None),
     tipo: Optional[str] = Query(None),
-    store: Optional[str] = Query(None)
+    store: Optional[str] = Query(None),
+    ytd_day: Optional[str] = Query(None)
 ):
     need_store = store is not None
     params = []
     where = [VPL_BASE]
-    add_filters(where, params, start_date, end_date, marca, tipo, store, year=year)
+    add_filters(where, params, start_date, end_date, marca, tipo, store, year=year, ytd_day=ytd_day)
     sql = f"""
         SELECT
             EXTRACT(MONTH FROM vplf.date_order)::int as month,
@@ -182,12 +220,13 @@ def get_sales_trend(
 def get_sales_by_year(
     marca: Optional[str] = Query(None),
     tipo: Optional[str] = Query(None),
-    store: Optional[str] = Query(None)
+    store: Optional[str] = Query(None),
+    ytd_day: Optional[str] = Query(None)
 ):
     need_store = store is not None
     params = []
     where = [VPL_BASE]
-    add_filters(where, params, marca=marca, tipo=tipo, store=store)
+    add_filters(where, params, marca=marca, tipo=tipo, store=store, ytd_day=ytd_day)
     sql = f"""
         SELECT
             EXTRACT(YEAR FROM vplf.date_order)::int as year,
@@ -206,13 +245,14 @@ def get_year_monthly(
     years: str = Query(...),
     marca: Optional[str] = Query(None),
     tipo: Optional[str] = Query(None),
-    store: Optional[str] = Query(None)
+    store: Optional[str] = Query(None),
+    ytd_day: Optional[str] = Query(None)
 ):
     year_list = [int(y.strip()) for y in years.split(',')]
     need_store = store is not None
     params = []
     where = [VPL_BASE]
-    add_filters(where, params, marca=marca, tipo=tipo, store=store, years=year_list)
+    add_filters(where, params, marca=marca, tipo=tipo, store=store, years=year_list, ytd_day=ytd_day)
     sql = f"""
         SELECT
             EXTRACT(YEAR FROM vplf.date_order)::int as year,
@@ -232,12 +272,13 @@ def get_sales_by_marca(
     end_date: Optional[str] = Query(None),
     tipo: Optional[str] = Query(None),
     store: Optional[str] = Query(None),
-    year: Optional[int] = Query(None)
+    year: Optional[int] = Query(None),
+    ytd_day: Optional[str] = Query(None)
 ):
     need_store = store is not None
     params = []
     where = [VPL_BASE, "vplf.marca IS NOT NULL"]
-    add_filters(where, params, start_date, end_date, tipo=tipo, store=store, year=year)
+    add_filters(where, params, start_date, end_date, tipo=tipo, store=store, year=year, ytd_day=ytd_day)
     sql = f"""
         SELECT
             vplf.marca,
@@ -257,12 +298,13 @@ def get_sales_by_tipo(
     end_date: Optional[str] = Query(None),
     marca: Optional[str] = Query(None),
     store: Optional[str] = Query(None),
-    year: Optional[int] = Query(None)
+    year: Optional[int] = Query(None),
+    ytd_day: Optional[str] = Query(None)
 ):
     need_store = store is not None
     params = []
     where = [VPL_BASE, "vplf.tipo IS NOT NULL"]
-    add_filters(where, params, start_date, end_date, marca=marca, store=store, year=year)
+    add_filters(where, params, start_date, end_date, marca=marca, store=store, year=year, ytd_day=ytd_day)
     sql = f"""
         SELECT
             vplf.tipo,
@@ -280,12 +322,13 @@ def get_sales_by_tipo(
 def get_marca_trend(
     marca: Optional[str] = Query(None),
     tipo: Optional[str] = Query(None),
-    store: Optional[str] = Query(None)
+    store: Optional[str] = Query(None),
+    ytd_day: Optional[str] = Query(None)
 ):
     need_store = store is not None
     params = []
     where = [VPL_BASE, "vplf.marca IS NOT NULL"]
-    add_filters(where, params, marca=marca, tipo=tipo, store=store)
+    add_filters(where, params, marca=marca, tipo=tipo, store=store, ytd_day=ytd_day)
     sql = f"""
         SELECT
             EXTRACT(YEAR FROM vplf.date_order)::int as year,
@@ -305,11 +348,12 @@ def get_sales_by_store(
     end_date: Optional[str] = Query(None),
     marca: Optional[str] = Query(None),
     tipo: Optional[str] = Query(None),
-    year: Optional[int] = Query(None)
+    year: Optional[int] = Query(None),
+    ytd_day: Optional[str] = Query(None)
 ):
     params = []
     where = [VPL_BASE]
-    add_filters(where, params, start_date, end_date, marca=marca, tipo=tipo, year=year)
+    add_filters(where, params, start_date, end_date, marca=marca, tipo=tipo, year=year, ytd_day=ytd_day)
     sql = f"""
         SELECT
             SPLIT_PART(sl.complete_name, '/', 2) as store_code,
@@ -333,11 +377,12 @@ def get_top_clients(
     tipo: Optional[str] = Query(None),
     store: Optional[str] = Query(None),
     year: Optional[int] = Query(None),
+    ytd_day: Optional[str] = Query(None),
     limit: int = Query(20)
 ):
     params = []
     where = [VPL_BASE]
-    add_filters(where, params, start_date, end_date, marca=marca, tipo=tipo, store=store, year=year)
+    add_filters(where, params, start_date, end_date, marca=marca, tipo=tipo, store=store, year=year, ytd_day=ytd_day)
     params.append(limit)
     sql = f"""
         SELECT
@@ -362,8 +407,9 @@ def get_client_years(
     tipo: Optional[str] = Query(None),
     store: Optional[str] = Query(None)
 ):
-    params = [client_id]
-    where = [VPL_BASE]
+    params = []
+    where = [VPL_BASE, "rp.odoo_id = %s"]
+    params.append(client_id)
     add_filters(where, params, marca=marca, tipo=tipo, store=store)
     sql = f"""
         SELECT
@@ -372,12 +418,10 @@ def get_client_years(
             COUNT(DISTINCT vplf.order_id) as order_count,
             COALESCE(SUM(vplf.qty), 0) as units_sold
         {vpl_from(need_store=store is not None, need_client=True)}
-        WHERE {" AND ".join(where)} AND rp.odoo_id = %s
+        WHERE {" AND ".join(where)}
         GROUP BY year ORDER BY year
     """
-    # Fix: client_id param is first, move to correct position
-    final_params = params[1:] + [params[0]]
-    return query_pg(sql, final_params)
+    return query_pg(sql, params)
 
 @api_router.get("/export/excel")
 def export_excel(
@@ -387,25 +431,26 @@ def export_excel(
     marca: Optional[str] = Query(None),
     tipo: Optional[str] = Query(None),
     store: Optional[str] = Query(None),
-    year: Optional[int] = Query(None)
+    year: Optional[int] = Query(None),
+    ytd_day: Optional[str] = Query(None)
 ):
     import openpyxl
-    from openpyxl.styles import Font, Alignment, numbers
+    from openpyxl.styles import Font
 
     wb = openpyxl.Workbook()
     ws = wb.active
     bold = Font(bold=True)
 
     if report == "sales-by-year":
-        data = get_sales_by_year(marca=marca, tipo=tipo, store=store)
-        ws.title = "Ventas por Año"
-        headers = ["Año", "Total Ventas (S/)", "Ordenes", "Unidades", "Ticket Promedio (S/)"]
+        data = get_sales_by_year(marca=marca, tipo=tipo, store=store, ytd_day=ytd_day)
+        ws.title = "Ventas por Ano"
+        headers = ["Ano", "Total Ventas (S/)", "Ordenes", "Unidades", "Ticket Promedio (S/)"]
         ws.append(headers)
         for row in data:
             ws.append([row["year"], row["total_sales"], row["order_count"], row["units_sold"], row["avg_ticket"]])
 
     elif report == "sales-by-marca":
-        data = get_sales_by_marca(start_date=start_date, end_date=end_date, tipo=tipo, store=store, year=year)
+        data = get_sales_by_marca(start_date=start_date, end_date=end_date, tipo=tipo, store=store, year=year, ytd_day=ytd_day)
         ws.title = "Ventas por Marca"
         headers = ["Marca", "Total Ventas (S/)", "Ordenes", "Unidades", "Ticket Promedio (S/)"]
         ws.append(headers)
@@ -413,7 +458,7 @@ def export_excel(
             ws.append([row["marca"], row["total_sales"], row["order_count"], row["units_sold"], row["avg_ticket"]])
 
     elif report == "sales-by-tipo":
-        data = get_sales_by_tipo(start_date=start_date, end_date=end_date, marca=marca, store=store, year=year)
+        data = get_sales_by_tipo(start_date=start_date, end_date=end_date, marca=marca, store=store, year=year, ytd_day=ytd_day)
         ws.title = "Ventas por Tipo"
         headers = ["Tipo", "Total Ventas (S/)", "Ordenes", "Unidades", "Ticket Promedio (S/)"]
         ws.append(headers)
@@ -421,7 +466,7 @@ def export_excel(
             ws.append([row["tipo"], row["total_sales"], row["order_count"], row["units_sold"], row["avg_ticket"]])
 
     elif report == "sales-by-store":
-        data = get_sales_by_store(start_date=start_date, end_date=end_date, marca=marca, tipo=tipo, year=year)
+        data = get_sales_by_store(start_date=start_date, end_date=end_date, marca=marca, tipo=tipo, year=year, ytd_day=ytd_day)
         ws.title = "Ventas por Tienda"
         headers = ["Tienda", "Total Ventas (S/)", "Ordenes", "Unidades", "Ticket Promedio (S/)"]
         ws.append(headers)
@@ -429,7 +474,7 @@ def export_excel(
             ws.append([row["store_code"], row["total_sales"], row["order_count"], row["units_sold"], row["avg_ticket"]])
 
     elif report == "top-clients":
-        data = get_top_clients(start_date=start_date, end_date=end_date, marca=marca, tipo=tipo, store=store, year=year)
+        data = get_top_clients(start_date=start_date, end_date=end_date, marca=marca, tipo=tipo, store=store, year=year, ytd_day=ytd_day)
         ws.title = "Top Clientes"
         headers = ["Cliente", "Total Ventas (S/)", "Ordenes", "Unidades", "Ticket Promedio (S/)"]
         ws.append(headers)
@@ -452,6 +497,11 @@ def export_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.document",
         headers={"Content-Disposition": f"attachment; filename=reporte_{report}.xlsx"}
     )
+
+@api_router.get("/cache/clear")
+def clear_cache():
+    _cache.clear()
+    return {"message": "Cache cleared"}
 
 # Include router and CORS
 app.include_router(api_router)

@@ -3,9 +3,7 @@ import { LayoutDashboard, TrendingUp, Package, Store, Users, Sun, Moon, X } from
 import { useTheme } from '../context/ThemeContext';
 import { useFilters } from '../context/FilterContext';
 import { Button } from '../components/ui/button';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from '../components/ui/select';
+import { MultiSelect } from '../components/MultiSelect';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -17,8 +15,7 @@ const navItems = [
 
 export default function Layout() {
   const { theme, toggleTheme } = useTheme();
-  const { options, filters, setFilter, clearFilters } = useFilters();
-  const hasFilters = filters.marca || filters.tipo || filters.store;
+  const { options, filters, setFilterArray, clearFilters, hasFilters } = useFilters();
 
   return (
     <div className="flex h-screen bg-background" data-testid="app-layout">
@@ -50,6 +47,7 @@ export default function Layout() {
         </nav>
         <div className="p-4 border-t border-border">
           <p className="text-[10px] text-muted-foreground tracking-wide">Ambission Industries S.A.C.</p>
+          <p className="text-[9px] text-muted-foreground/60 mt-0.5">Solo ventas reales (sin cancelaciones ni reservas)</p>
         </div>
       </aside>
 
@@ -57,47 +55,30 @@ export default function Layout() {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
         <header
-          className="sticky top-0 z-10 border-b border-border bg-background/90 backdrop-blur-md px-6 py-2.5 flex items-center gap-2.5"
+          className="sticky top-0 z-10 border-b border-border bg-background/90 backdrop-blur-md px-6 py-2.5 flex items-center gap-2"
           data-testid="header"
         >
-          <Select
-            value={filters.marca || "all"}
-            onValueChange={(v) => setFilter('marca', v === 'all' ? null : v)}
-          >
-            <SelectTrigger className="w-[150px] h-8 text-xs rounded-sm" data-testid="filter-marca">
-              <SelectValue placeholder="Marca" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas las marcas</SelectItem>
-              {options.marcas.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.tipo || "all"}
-            onValueChange={(v) => setFilter('tipo', v === 'all' ? null : v)}
-          >
-            <SelectTrigger className="w-[150px] h-8 text-xs rounded-sm" data-testid="filter-tipo">
-              <SelectValue placeholder="Tipo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los tipos</SelectItem>
-              {options.tipos.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filters.store || "all"}
-            onValueChange={(v) => setFilter('store', v === 'all' ? null : v)}
-          >
-            <SelectTrigger className="w-[140px] h-8 text-xs rounded-sm" data-testid="filter-store">
-              <SelectValue placeholder="Tienda" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas las tiendas</SelectItem>
-              {options.stores.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <MultiSelect
+            options={options.marcas}
+            selected={filters.marcas}
+            onChange={(v) => setFilterArray('marcas', v)}
+            placeholder="Marca"
+            testId="filter-marca"
+          />
+          <MultiSelect
+            options={options.tipos}
+            selected={filters.tipos}
+            onChange={(v) => setFilterArray('tipos', v)}
+            placeholder="Tipo"
+            testId="filter-tipo"
+          />
+          <MultiSelect
+            options={options.stores}
+            selected={filters.stores}
+            onChange={(v) => setFilterArray('stores', v)}
+            placeholder="Tienda"
+            testId="filter-store"
+          />
 
           {hasFilters && (
             <Button

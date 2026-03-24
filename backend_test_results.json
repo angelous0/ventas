@@ -1,0 +1,85 @@
+{
+  "summary": {
+    "total_tests": 14,
+    "passed_tests": 14,
+    "failed_tests": 0,
+    "success_rate": 100.0
+  },
+  "failed_tests": [],
+  "detailed_results": {
+    "Root Endpoint": {
+      "success": true,
+      "details": "Status: 200, Duration: 0.28s",
+      "response_data": {
+        "message": "CRM Reports API",
+        "status": "ok",
+        "sales_filter": "is_cancel=false, order_cancel=false, reserva=false (ventas reales)"
+      }
+    },
+    "Filters Endpoint": {
+      "success": true,
+      "details": "Status: 200, Duration: 1.87s - Found 9 marcas, 15 tipos, 18 stores, 9 years",
+      "response_data": null
+    },
+    "KPIs Endpoint (Basic)": {
+      "success": true,
+      "details": "Status: 200, Duration: 1.57s - Sales: 1429358.88, Orders: 3092",
+      "response_data": null
+    },
+    "KPIs Endpoint (With Marca Filter)": {
+      "success": true,
+      "details": "Status: 200, Duration: 1.43s",
+      "response_data": null
+    },
+    "KPIs Endpoint (With Store Filter)": {
+      "success": true,
+      "details": "Status: 200, Duration: 1.61s",
+      "response_data": null
+    },
+    "Sales Trend Endpoint": {
+      "success": true,
+      "details": "Status: 200, Duration: 1.48s - Found 3 months of data",
+      "response_data": null
+    },
+    "Sales By Year Endpoint": {
+      "success": true,
+      "details": "Status: 200, Duration: 5.55s - Found 9 years of data",
+      "response_data": null
+    },
+    "Year Monthly Endpoint": {
+      "success": true,
+      "details": "Status: 200, Duration: 7.88s - Found 15 month records",
+      "response_data": null
+    },
+    "Sales By Marca Endpoint": {
+      "success": true,
+      "details": "Status: 200, Duration: 1.40s - Found 5 marcas",
+      "response_data": null
+    },
+    "Sales By Tipo Endpoint": {
+      "success": true,
+      "details": "Status: 200, Duration: 1.33s - Found 15 tipos",
+      "response_data": null
+    },
+    "Sales By Store Endpoint": {
+      "success": true,
+      "details": "Status: 200, Duration: 1.45s - Found 9 stores",
+      "response_data": null
+    },
+    "Top Clients Endpoint": {
+      "success": true,
+      "details": "Status: 200, Duration: 1.47s - Found 10 clients",
+      "response_data": null
+    },
+    "Client Years Endpoint": {
+      "success": true,
+      "details": "Status: 200, Duration: 4.40s - Found 9 years for client 8",
+      "response_data": null
+    },
+    "Excel Export Endpoint": {
+      "success": true,
+      "details": "Status: 200, Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.document",
+      "response_data": null
+    }
+  }
+}
