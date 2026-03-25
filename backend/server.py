@@ -499,6 +499,49 @@ def export_excel(
         headers={"Content-Disposition": f"attachment; filename=reporte_{report}.xlsx"}
     )
 
+@api_router.get("/store-timeline")
+def get_store_timeline(
+    granularity: str = Query("month"),
+    store: Optional[str] = Query(None),
+    marca: Optional[str] = Query(None),
+    tipo: Optional[str] = Query(None),
+    year: Optional[int] = Query(None),
+    ytd_day: Optional[str] = Query(None)
+):
+    params = []
+    where = [VPL_BASE]
+    add_filters(where, params, marca=marca, tipo=tipo, store=store, year=year, ytd_day=ytd_day)
+
+    if granularity == "day":
+        time_expr = "vplf.date_order::date"
+        order_expr = "period"
+    elif granularity == "week":
+        time_expr = "DATE_TRUNC('week', vplf.date_order)::date"
+        order_expr = "period"
+    else:
+        time_expr = "DATE_TRUNC('month', vplf.date_order)::date"
+        order_expr = "period"
+
+    sql = f"""
+        SELECT
+            {time_expr} as period,
+            SPLIT_PART(sl.complete_name, '/', 2) as store_code,
+            COALESCE(SUM(vplf.price_subtotal), 0) as total_sales,
+            COUNT(DISTINCT vplf.order_id) as order_count,
+            COALESCE(SUM(vplf.qty), 0) as units_sold
+        {vpl_from(need_store=True)}
+        WHERE {" AND ".join(where)}
+            AND SPLIT_PART(sl.complete_name, '/', 2) IS NOT NULL
+            AND SPLIT_PART(sl.complete_name, '/', 2) != ''
+        GROUP BY period, store_code
+        ORDER BY {order_expr}, store_code
+    """
+    rows = query_pg(sql, params)
+    for r in rows:
+        if r.get('period'):
+            r['period'] = r['period'][:10] if isinstance(r['period'], str) else r['period']
+    return rows
+
 @api_router.get("/cache/clear")
 def clear_cache():
     _cache.clear()
