@@ -18,20 +18,28 @@ Build a CRM reports module that connects to an external PostgreSQL database (Odo
 - KPI indicators: total sales, orders, avg ticket, units sold
 - Export to Excel
 - Light/dark mode toggle
+- Temporal store tracking by day/week/month (amount + quantity)
 
-## What's Been Implemented (2026-03-24)
+## What's Been Implemented
 
-### Iteration 1
+### Iteration 1 (2026-03-24)
 - Full dashboard with KPIs, charts, 5 pages
 - Backend with 13+ API endpoints
 - Excel export, dark mode
 
-### Iteration 2 (Current)
-- **Multi-select filters**: All 3 filters (marca, tipo, tienda) now accept multiple selections
-- **"Hasta la fecha" toggle**: Compares years only up to current date for fair comparison
-- **In-memory cache**: 2-minute TTL cache for faster repeated queries
-- **Fixed year chart lines**: 2021 and other old years now display correctly
-- **Connection pool optimization**: Reduced pool size, added statement timeout
+### Iteration 2 (2026-03-24)
+- Multi-select filters for marca, tipo, tienda
+- "Hasta la fecha" toggle for fair YoY comparison
+- In-memory cache (2-minute TTL)
+- Fixed year chart lines display
+- Connection pool optimization
+
+### Iteration 3 (2026-03-25)
+- **Store temporal tracking**: New `/api/store-timeline` endpoint with day/week/month granularity
+- **Stores page redesign**: Year selector, store multi-select badges, granularity controls (Dia/Semana/Mes), metric toggle (Dinero/Cantidad)
+- **Timeline line chart**: Multi-store comparison over time with color-coded lines
+- **Timeline data table**: Period-based detail with Ventas and Unidades per store
+- **Cumulative sales chart** added to Sales Analysis page
 
 ## Data Verification
 - **106,037 valid sales** (real) out of 140,380 total orders
@@ -39,14 +47,12 @@ Build a CRM reports module that connects to an external PostgreSQL database (Odo
 - Data spans 2018-2026
 
 ## Known Limitation
-- `x_tipo_resumen` field does NOT exist in the synced PostgreSQL mirror database. Only `tipo` from product_template is available.
+- `x_tipo_resumen` field does NOT exist in the synced PostgreSQL mirror database. Only `tipo` from product_template is available (using `tipo_resumen` field).
 
 ## Prioritized Backlog
 ### P1
 - [ ] PDF export
 - [ ] Date range picker (calendar) for custom date filtering
-- [ ] Sync x_tipo_resumen from Odoo if needed
-- [ ] Store year-over-year comparison
 
 ### P2
 - [ ] Redis cache for production
