@@ -5,6 +5,8 @@ import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
 import { Send, Plus, Bot, User, Loader2, Settings, Check, X, Key } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export default function Asistente() {
   const { getFilterParams, hasFilters, filters } = useFilters();
@@ -258,15 +260,31 @@ export default function Asistente() {
                 </div>
               )}
               <div
-                className={`max-w-[75%] rounded-sm px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
+                className={`max-w-[75%] rounded-sm px-4 py-3 text-sm leading-relaxed ${
                   msg.role === 'user'
-                    ? 'bg-foreground text-background'
+                    ? 'bg-foreground text-background whitespace-pre-wrap'
                     : msg.error
-                      ? 'bg-destructive/10 text-destructive border border-destructive/20'
+                      ? 'bg-destructive/10 text-destructive border border-destructive/20 whitespace-pre-wrap'
                       : 'bg-muted text-foreground'
                 }`}
               >
-                {msg.content}
+                {msg.role === 'assistant' && !msg.error ? (
+                  <div className="prose prose-sm dark:prose-invert max-w-none
+                    prose-p:my-1.5 prose-p:leading-relaxed
+                    prose-headings:mt-3 prose-headings:mb-1.5 prose-headings:font-semibold
+                    prose-h3:text-sm prose-h2:text-base prose-h1:text-base
+                    prose-strong:font-semibold
+                    prose-table:text-xs prose-table:my-2
+                    prose-th:px-2 prose-th:py-1.5 prose-th:border prose-th:border-border prose-th:bg-muted/50 prose-th:font-semibold prose-th:text-left
+                    prose-td:px-2 prose-td:py-1.5 prose-td:border prose-td:border-border
+                    prose-li:my-0.5 prose-ul:my-1.5 prose-ol:my-1.5
+                    prose-hr:my-3"
+                  >
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  msg.content
+                )}
               </div>
               {msg.role === 'user' && (
                 <div className="w-7 h-7 rounded-full bg-foreground flex items-center justify-center shrink-0 mt-0.5">

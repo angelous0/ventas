@@ -41,3 +41,27 @@
 .data-row:hover {
     background-color: hsl(var(--muted) / 0.5);
 }
+
+
+/* Chat markdown table styles */
+.prose table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 12px;
+}
+.prose thead th {
+    background: hsl(var(--muted));
+    font-weight: 600;
+    text-align: left;
+    padding: 6px 10px;
+    border: 1px solid hsl(var(--border));
+    white-space: nowrap;
+}
+.prose tbody td {
+    padding: 5px 10px;
+    border: 1px solid hsl(var(--border));
+}
+.prose tbody tr:hover {
+    background: hsl(var(--muted) / 0.3);
+}
