@@ -747,10 +747,14 @@ async def chat_endpoint(req: ChatRequest):
     )
     full_system = f"{system_prompt}\n\n--- DATOS DE CONTEXTO ACTUAL ---\n{data_context}"
 
+    # Check for custom API key
+    custom_key_doc = await db.settings.find_one({"key": "openai_api_key"}, {"_id": 0})
+    api_key = (custom_key_doc.get("value") if custom_key_doc and custom_key_doc.get("value") else os.environ['EMERGENT_LLM_KEY'])
+
     # Get or create chat session
     if session_id not in chat_sessions:
         chat = LlmChat(
-            api_key=os.environ['EMERGENT_LLM_KEY'],
+            api_key=api_key,
             session_id=session_id,
             system_message=full_system
         ).with_model("openai", "gpt-4o-mini")
@@ -791,6 +795,28 @@ async def get_chat_history(session_id: str = Query(...)):
 async def new_chat_session():
     session_id = str(uuid.uuid4())
     return {"session_id": session_id}
+
+@api_router.get("/settings/api-key")
+async def get_api_key_status():
+    doc = await db.settings.find_one({"key": "openai_api_key"}, {"_id": 0})
+    if doc and doc.get("value"):
+        masked = doc["value"][:7] + "..." + doc["value"][-4:]
+        return {"has_key": True, "masked": masked}
+    return {"has_key": False, "masked": None}
+
+@api_router.post("/settings/api-key")
+async def save_api_key(req: dict):
+    api_key = req.get("api_key", "").strip()
+    if not api_key:
+        await db.settings.delete_one({"key": "openai_api_key"})
+        return {"status": "removed"}
+    await db.settings.update_one(
+        {"key": "openai_api_key"},
+        {"$set": {"key": "openai_api_key", "value": api_key, "updated": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    chat_sessions.clear()
+    return {"status": "saved"}
 
 @api_router.get("/cache/clear")
 def clear_cache():

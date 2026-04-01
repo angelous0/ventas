@@ -16,6 +16,8 @@ export const api = {
   sendChatMessage: (data) => axios.post(`${API}/chat`, data).then(r => r.data),
   getChatHistory: (params) => axios.get(`${API}/chat/history`, { params }).then(r => r.data),
   newChatSession: () => axios.post(`${API}/chat/new`).then(r => r.data),
+  getApiKeyStatus: () => axios.get(`${API}/settings/api-key`).then(r => r.data),
+  saveApiKey: (api_key) => axios.post(`${API}/settings/api-key`, { api_key }).then(r => r.data),
   getTopClients: (params) => axios.get(`${API}/top-clients`, { params }).then(r => r.data),
   getClientYears: (params) => axios.get(`${API}/client-years`, { params }).then(r => r.data),
   exportExcel: (params) => {

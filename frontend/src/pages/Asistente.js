@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
-import { Send, Plus, Bot, User, Loader2 } from 'lucide-react';
+import { Send, Plus, Bot, User, Loader2, Settings, Check, X, Key } from 'lucide-react';
 
 export default function Asistente() {
   const { getFilterParams, hasFilters, filters } = useFilters();
@@ -14,6 +14,10 @@ export default function Asistente() {
   const [sessionId, setSessionId] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [apiKeyStatus, setApiKeyStatus] = useState({ has_key: false, masked: null });
+  const [savingKey, setSavingKey] = useState(false);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -29,6 +33,39 @@ export default function Asistente() {
     setInput('');
     inputRef.current?.focus();
   }, []);
+
+  // Load API key status on mount
+  useEffect(() => {
+    api.getApiKeyStatus().then(setApiKeyStatus).catch(() => {});
+  }, []);
+
+  const handleSaveKey = async () => {
+    setSavingKey(true);
+    try {
+      await api.saveApiKey(apiKeyInput);
+      const status = await api.getApiKeyStatus();
+      setApiKeyStatus(status);
+      setApiKeyInput('');
+      setShowSettings(false);
+    } catch {
+      // ignore
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+  const handleRemoveKey = async () => {
+    setSavingKey(true);
+    try {
+      await api.saveApiKey('');
+      setApiKeyStatus({ has_key: false, masked: null });
+      setApiKeyInput('');
+    } catch {
+      // ignore
+    } finally {
+      setSavingKey(false);
+    }
+  };
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -93,16 +130,93 @@ export default function Asistente() {
             )}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="rounded-sm text-xs h-8"
-          onClick={startNewChat}
-          data-testid="new-chat-btn"
-        >
-          <Plus size={14} className="mr-1.5" /> Nueva conversacion
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-sm text-xs h-8"
+            onClick={() => setShowSettings(!showSettings)}
+            data-testid="settings-btn"
+          >
+            <Settings size={14} className="mr-1.5" />
+            {apiKeyStatus.has_key ? 'API Key configurada' : 'Configurar API Key'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-sm text-xs h-8"
+            onClick={startNewChat}
+            data-testid="new-chat-btn"
+          >
+            <Plus size={14} className="mr-1.5" /> Nueva conversacion
+          </Button>
+        </div>
       </div>
+
+      {/* API Key Settings Panel */}
+      {showSettings && (
+        <Card className="rounded-sm mb-4 shrink-0" data-testid="api-key-panel">
+          <CardContent className="py-4 px-5">
+            <div className="flex items-start gap-3">
+              <Key size={16} className="text-muted-foreground mt-0.5 shrink-0" />
+              <div className="flex-1 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">OpenAI API Key</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Pega tu API key de OpenAI para usar tu propia cuenta. Obtenla en{' '}
+                    <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
+                      platform.openai.com/api-keys
+                    </a>
+                  </p>
+                </div>
+                {apiKeyStatus.has_key ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 bg-muted rounded-sm px-3 py-2 text-xs font-mono flex-1">
+                      <Check size={14} className="text-emerald-500 shrink-0" />
+                      <span>{apiKeyStatus.masked}</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-sm text-xs h-8 text-destructive hover:text-destructive"
+                      onClick={handleRemoveKey}
+                      disabled={savingKey}
+                      data-testid="remove-key-btn"
+                    >
+                      <X size={14} className="mr-1" /> Quitar
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="password"
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder="sk-..."
+                      className="flex-1 bg-muted rounded-sm px-3 py-2 text-xs font-mono border-0 outline-none focus:ring-1 focus:ring-foreground/20 placeholder:text-muted-foreground/40"
+                      data-testid="api-key-input"
+                    />
+                    <Button
+                      size="sm"
+                      className="rounded-sm text-xs h-8"
+                      onClick={handleSaveKey}
+                      disabled={!apiKeyInput.trim() || savingKey}
+                      data-testid="save-key-btn"
+                    >
+                      {savingKey ? <Loader2 size={14} className="animate-spin" /> : 'Guardar'}
+                    </Button>
+                  </div>
+                )}
+                <p className="text-[10px] text-muted-foreground/60">
+                  {apiKeyStatus.has_key
+                    ? 'Usando tu API key personal. Los costos se cobran en tu cuenta de OpenAI.'
+                    : 'Sin key configurada — se usa la key por defecto de Emergent.'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Messages area */}
       <Card className="flex-1 rounded-sm overflow-hidden flex flex-col min-h-0" data-testid="chat-card">
