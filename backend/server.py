@@ -762,6 +762,71 @@ def _execute_read_query(sql):
             return result
 
 
+def _detect_chart(query_results, question):
+    """Auto-detect if results are chartable and determine chart type + config."""
+    if not query_results or len(query_results) < 2:
+        return None
+
+    cols = list(query_results[0].keys())
+    if len(cols) < 2:
+        return None
+
+    # Identify label column (first text column) and numeric columns
+    label_col = None
+    numeric_cols = []
+    for col in cols:
+        sample_vals = [r.get(col) for r in query_results[:5] if r.get(col) is not None]
+        if sample_vals and all(isinstance(v, (int, float)) for v in sample_vals):
+            numeric_cols.append(col)
+        elif sample_vals and not label_col:
+            label_col = col
+
+    if not label_col or not numeric_cols:
+        return None
+
+    # Determine chart type based on data patterns
+    q_lower = question.lower()
+    has_time = any(w in label_col.lower() for w in ['mes', 'month', 'fecha', 'date', 'year', 'año', 'dia', 'day', 'semana', 'week', 'periodo', 'period'])
+    has_time_q = any(w in q_lower for w in ['por mes', 'mensual', 'por dia', 'diario', 'tendencia', 'evolucion', 'comparar mes', 'por año'])
+
+    if has_time or has_time_q:
+        chart_type = "line"
+    elif len(query_results) <= 8:
+        chart_type = "bar"
+    else:
+        chart_type = "bar"
+
+    # Build chart data (limit to 30 rows)
+    MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+    chart_data = []
+    for row in query_results[:30]:
+        raw_label = str(row.get(label_col, ''))
+        # Format date labels
+        if has_time and len(raw_label) >= 10:
+            try:
+                parts = raw_label[:10].split('-')
+                if len(parts) == 3:
+                    yr, mo, dy = int(parts[0]), int(parts[1]), int(parts[2])
+                    if dy == 1 and label_col.lower() in ['mes', 'month', 'periodo', 'period', 'fecha']:
+                        raw_label = f"{MESES[mo-1]} {yr}"
+                    else:
+                        raw_label = f"{dy}/{mo}/{yr}"
+            except:
+                pass
+        d = {"label": raw_label}
+        for nc in numeric_cols[:3]:
+            d[nc] = row.get(nc, 0)
+        chart_data.append(d)
+
+    return {
+        "type": chart_type,
+        "data": chart_data,
+        "labelKey": "label",
+        "dataKeys": numeric_cols[:3],
+        "labelName": label_col,
+    }
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
@@ -770,6 +835,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
     session_id: str
+    chart: Optional[dict] = None
 
 chat_sessions = {}
 
@@ -811,11 +877,12 @@ async def chat_endpoint(req: ChatRequest):
     generated_sql = _extract_sql(sql_response)
 
     if not generated_sql or not _safe_sql(generated_sql):
-        # Fallback: respond without SQL
         logger.warning(f"Could not extract safe SQL: {sql_response[:200]}")
         response_text = "No pude generar una consulta válida para esa pregunta. ¿Podrías reformularla?"
+        chart_data = None
     else:
         # Step 2: Execute SQL
+        query_results = []
         try:
             logger.info(f"Executing AI SQL: {generated_sql[:200]}")
             query_results = _execute_read_query(generated_sql)
@@ -825,6 +892,9 @@ async def chat_endpoint(req: ChatRequest):
         except Exception as e:
             logger.error(f"SQL execution error: {e}")
             results_str = f"Error al ejecutar la consulta: {str(e)}"
+
+        # Detect chart
+        chart_data = _detect_chart(query_results, req.message)
 
         # Step 3: Format response
         resp_system = RESPONSE_PROMPT.format(
@@ -847,7 +917,7 @@ async def chat_endpoint(req: ChatRequest):
     _pg_save_chat_message(session_id, "user", req.message, filters_str)
     _pg_save_chat_message(session_id, "assistant", response_text)
 
-    return ChatResponse(response=response_text, session_id=session_id)
+    return ChatResponse(response=response_text, session_id=session_id, chart=chart_data)
 
 @api_router.get("/chat/history")
 def get_chat_history(session_id: str = Query(...)):

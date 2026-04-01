@@ -1,12 +1,75 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useFilters } from '../context/FilterContext';
-import { api } from '../lib/api';
+import { api, COLORS, formatCurrency, formatNumber } from '../lib/api';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Skeleton } from '../components/ui/skeleton';
 import { Send, Plus, Bot, User, Loader2, Settings, Check, X, Key } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell
+} from 'recharts';
+
+const ChartTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-background border border-border shadow-sm rounded-sm p-2.5 text-xs">
+      <p className="font-medium mb-1">{label}</p>
+      {payload.map((p, i) => (
+        <p key={i} style={{ color: p.color }}>
+          {p.name}: {typeof p.value === 'number' && p.value > 1000 ? formatCurrency(p.value) : formatNumber(p.value)}
+        </p>
+      ))}
+    </div>
+  );
+};
+
+function InlineChart({ chart }) {
+  if (!chart || !chart.data?.length) return null;
+  const { type, data, dataKeys, labelName } = chart;
+
+  return (
+    <div className="mt-3 mb-1 bg-background/50 rounded-sm p-3 border border-border/50" data-testid="inline-chart">
+      <p className="text-[10px] tracking-[0.15em] uppercase font-semibold text-muted-foreground mb-2">
+        {labelName}
+      </p>
+      <div style={{ width: '100%', height: Math.min(50 + data.length * 28, 360) }}>
+        <ResponsiveContainer width="100%" height="100%">
+          {type === 'line' ? (
+            <LineChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false}
+                tickFormatter={v => v >= 1000000 ? `${(v/1000000).toFixed(1)}M` : v >= 1000 ? `${(v/1000).toFixed(0)}K` : v} />
+              <Tooltip content={<ChartTooltip />} />
+              {dataKeys.length > 1 && <Legend wrapperStyle={{ fontSize: '10px' }} />}
+              {dataKeys.map((dk, i) => (
+                <Line key={dk} type="monotone" dataKey={dk} stroke={COLORS[i % COLORS.length]} strokeWidth={2.5}
+                  dot={{ r: data.length <= 15 ? 4 : 0, fill: COLORS[i % COLORS.length], strokeWidth: 0 }}
+                  activeDot={{ r: 5 }} name={dk} />
+              ))}
+            </LineChart>
+          ) : (
+            <BarChart data={data} layout="vertical" margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false}
+                tickFormatter={v => v >= 1000000 ? `${(v/1000000).toFixed(1)}M` : v >= 1000 ? `${(v/1000).toFixed(0)}K` : v} />
+              <YAxis dataKey="label" type="category" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} width={90} />
+              <Tooltip content={<ChartTooltip />} />
+              {dataKeys.length > 1 && <Legend wrapperStyle={{ fontSize: '10px' }} />}
+              {dataKeys.map((dk, i) => (
+                <Bar key={dk} dataKey={dk} name={dk} radius={[0, 3, 3, 0]} fill={COLORS[i % COLORS.length]}>
+                  {dataKeys.length === 1 && data.map((_, j) => <Cell key={j} fill={COLORS[j % COLORS.length]} />)}
+                </Bar>
+              ))}
+            </BarChart>
+          )}
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
 
 export default function Asistente() {
   const { getFilterParams, hasFilters, filters } = useFilters();
@@ -86,7 +149,7 @@ export default function Asistente() {
         filters: fp,
       });
       setSessionId(res.session_id);
-      setMessages(prev => [...prev, { role: 'assistant', content: res.response }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: res.response, chart: res.chart || null }]);
     } catch (err) {
       setMessages(prev => [...prev, {
         role: 'assistant',
@@ -260,7 +323,7 @@ export default function Asistente() {
                 </div>
               )}
               <div
-                className={`max-w-[75%] rounded-sm px-4 py-3 text-sm leading-relaxed ${
+                className={`max-w-[85%] rounded-sm px-4 py-3 text-sm leading-relaxed ${
                   msg.role === 'user'
                     ? 'bg-foreground text-background whitespace-pre-wrap'
                     : msg.error
@@ -269,19 +332,22 @@ export default function Asistente() {
                 }`}
               >
                 {msg.role === 'assistant' && !msg.error ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none
-                    prose-p:my-1.5 prose-p:leading-relaxed
-                    prose-headings:mt-3 prose-headings:mb-1.5 prose-headings:font-semibold
-                    prose-h3:text-sm prose-h2:text-base prose-h1:text-base
-                    prose-strong:font-semibold
-                    prose-table:text-xs prose-table:my-2
-                    prose-th:px-2 prose-th:py-1.5 prose-th:border prose-th:border-border prose-th:bg-muted/50 prose-th:font-semibold prose-th:text-left
-                    prose-td:px-2 prose-td:py-1.5 prose-td:border prose-td:border-border
-                    prose-li:my-0.5 prose-ul:my-1.5 prose-ol:my-1.5
-                    prose-hr:my-3"
-                  >
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                  </div>
+                  <>
+                    <div className="prose prose-sm dark:prose-invert max-w-none
+                      prose-p:my-1.5 prose-p:leading-relaxed
+                      prose-headings:mt-3 prose-headings:mb-1.5 prose-headings:font-semibold
+                      prose-h3:text-sm prose-h2:text-base prose-h1:text-base
+                      prose-strong:font-semibold
+                      prose-table:text-xs prose-table:my-2
+                      prose-th:px-2 prose-th:py-1.5 prose-th:border prose-th:border-border prose-th:bg-muted/50 prose-th:font-semibold prose-th:text-left
+                      prose-td:px-2 prose-td:py-1.5 prose-td:border prose-td:border-border
+                      prose-li:my-0.5 prose-ul:my-1.5 prose-ol:my-1.5
+                      prose-hr:my-3"
+                    >
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                    </div>
+                    {msg.chart && <InlineChart chart={msg.chart} />}
+                  </>
                 ) : (
                   msg.content
                 )}
