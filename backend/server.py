@@ -630,11 +630,11 @@ Vista principal: v_pos_line_full (alias: vplf) — cada fila es una línea de ve
   - price_unit (numeric) — precio unitario
   - price_subtotal (numeric) — subtotal de la línea (precio * qty - descuento)
   - discount (numeric) — porcentaje de descuento
-  - marca (text) — marca del producto (ELEMENT PREMIUM, QEPO, BOOSH, etc.)
+  - marca (text) — marca del producto
   - tipo (text) — tipo de producto
   - tela (text) — tipo de tela
-  - entalle (text) — tipo de entalle (Slim, Skinny, Regular, etc.)
-  - talla (text) — talla (28, 30, 32, S, M, L, etc.)
+  - entalle (text) — tipo de entalle/corte
+  - talla (text) — talla
   - color (text) — color del producto
   - barcode (text) — código de barras
   - product_tmpl_id (int) — FK a product_template
@@ -647,7 +647,7 @@ Vista principal: v_pos_line_full (alias: vplf) — cada fila es una línea de ve
 
 Tabla: product_template (alias: pt) — JOIN con pt.odoo_id = vplf.product_tmpl_id
   - name (text) — nombre del producto
-  - tipo_resumen (text) — tipo resumido (Pantalon Denim, Polo, Short Denim, Casaca, etc.)
+  - tipo_resumen (text) — tipo resumido del producto
   - marca, tipo, tela, entalle — atributos del producto
   - list_price (numeric) — precio de lista
   - linea_negocio (text) — línea de negocio
@@ -655,13 +655,19 @@ Tabla: product_template (alias: pt) — JOIN con pt.odoo_id = vplf.product_tmpl_
 Tabla: pos_order (alias: po) — JOIN con po.odoo_id = vplf.order_id AND po.company_key = vplf.company_key
   - partner_id (int) — FK a res_partner (cliente)
   - location_id (int) — FK a stock_location (tienda)
-  - is_cancel, order_cancel, reserva (boolean) — filtros de cancelación
 
 Tabla: stock_location (alias: sl) — JOIN con sl.odoo_id = po.location_id
   - complete_name (text) — usar SPLIT_PART(sl.complete_name, '/', 2) para obtener código de tienda
 
 Tabla: res_partner (alias: rp) — JOIN con rp.odoo_id = po.partner_id
   - name (text) — nombre del cliente
+
+VALORES VÁLIDOS (usar exactamente estos en los filtros WHERE):
+- MARCAS: AMBISSION, BOOSH, ELEMENT DENIM, ELEMENT PREMIUM, EP Studio, PSICOSIS, QEPO, REDDOOR, SPACE
+- ENTALLES: Baggy, Baggy Cargo, Bermuda, Bermuda Cargo, Boxi Fit, Boxy Fit, Jogger, Jogger Cargo, Mom Jeans, Oversize, Oversize Cargo, Pitillo, Regular, Semi Extra, Semipitillo, Semipitillo Cargo, Skinny, Slim, Super Baggy, Torero, Unico
+- TELAS: Algodón, Catania, Charlot, Comfort, Cordelina, Corduroy, Cortaviento, Denim, Denim Mate, Dray Fit, Drill, Drill Rigido, Franela, Interfil, Jogg, Licrado, Moret, Paper Touch, Popelina, Reppel, Rigido, Satinado, Suede, Tencel, Tricot, Wafer, Wafer Pike
+- TIPOS (pt.tipo_resumen): Bermuda, Bermuda Baggy, Bermuda Cargo, Biviri, Blazer, Bomber, Boxer, Camisa, Camisaco, Casaca, Casaca Denim, Chaleco, Correa, Jogger, Pantalon, Pantalon Cargo, Pantalon Denim, Pantalon Drill, Polo, Polo Basico, Polo Estampado, Short, Short Denim, Short Drill, Torero, Torero Drill
+- TIENDAS (código de tienda): AP, BOSGA, GAM207, GAM218, GM209, GR238, GRA55, VENTA, VTALL
 
 REGLAS OBLIGATORIAS PARA SQL:
 1. SIEMPRE filtrar ventas reales: (vplf.is_cancelled IS NULL OR vplf.is_cancelled = false) AND (vplf.reserva IS NULL OR vplf.reserva = false)
@@ -672,6 +678,9 @@ REGLAS OBLIGATORIAS PARA SQL:
 6. LIMIT máximo 50 filas.
 7. Montos en Soles (S/).
 8. "Este año" = {current_year}, "año pasado" = {prev_year}
+9. Si el usuario menciona un valor (marca, entalle, tela, tipo) que NO existe en VALORES VÁLIDOS, responde con ```sql SELECT 'NO_EXISTE' as error``` y nada más.
+10. Usar ILIKE para búsquedas flexibles de color y nombre de cliente/producto.
+11. SIEMPRE usar el alias de tabla (vplf., pt., po., sl., rp.) en TODAS las columnas, incluyendo GROUP BY, ORDER BY y WHERE. Ejemplo: GROUP BY vplf.entalle, no GROUP BY entalle.
 
 INSTRUCCIONES:
 - Cuando el usuario haga una pregunta, genera UNA consulta SQL que obtenga los datos necesarios.
@@ -689,7 +698,9 @@ Se ejecutó esta consulta SQL y estos son los resultados:
 Responde en español de forma clara, concisa y analítica. Usa formato con separadores de miles y S/ para montos.
 Si los datos muestran tendencias o comparaciones, incluye insights de negocio relevantes.
 No muestres el SQL al usuario. Responde como si fueras un analista presentando un reporte.
-Si no hay resultados, indica que no se encontraron datos para esa consulta específica."""
+Si no hay resultados o hay un error, indica amablemente qué pasó.
+Si el resultado es 'NO_EXISTE', indica al usuario que ese valor no existe en la base de datos y muestra las opciones válidas que conoces.
+Las marcas válidas son: AMBISSION, BOOSH, ELEMENT DENIM, ELEMENT PREMIUM, EP Studio, PSICOSIS, QEPO, REDDOOR, SPACE."""
 
 
 def _extract_sql(text):
