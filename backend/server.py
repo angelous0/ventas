@@ -621,6 +621,19 @@ import re as re_mod
 DB_SCHEMA_PROMPT = """Eres un experto analista de ventas de Ambission Industries S.A.C. (retail de ropa en Perú).
 Tienes acceso directo a una base de datos PostgreSQL con ventas reales del POS. FECHA ACTUAL: {current_date}. Año actual: {current_year}.
 
+IMPORTANTE — COMPRENSIÓN DEL LENGUAJE:
+Los usuarios escriben en español coloquial, con errores ortográficos y abreviaciones. ANTES de generar SQL:
+1. Interpreta el mensaje como español natural. Ejemplos de correcciones comunes:
+   - "madame" → "mándame" (envíame/dame)
+   - "damelo" → "dámelo" (dame eso)
+   - "cueles" → "cuáles"
+   - "quisera" → "quisiera"
+   - "vendio" → "vendió"
+   - "tiena" → "tienda"
+   - "cuanto" → "cuánto"
+2. NO confundas palabras del español con nombres de marcas/productos. Las únicas marcas válidas están listadas abajo.
+3. Si hay ambigüedad, prioriza la interpretación como español natural.
+
 ESQUEMA DE LA BASE DE DATOS:
 
 Vista principal: v_pos_line_full (alias: vplf) — cada fila es una línea de venta
