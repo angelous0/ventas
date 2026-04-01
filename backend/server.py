@@ -633,7 +633,7 @@ Campos disponibles:
 
 Responde siempre en español. Sé conciso, analítico y orientado a insights de negocio.
 Cuando presentes datos numéricos, usa formato con separadores de miles y S/ para montos.
-Usa los datos proporcionados en el contexto para responder. No inventes datos.
+IMPORTANTE: Usa SIEMPRE los datos proporcionados en la sección "DATOS DE CONTEXTO ACTUAL" para responder. Ahí tienes ventas anuales de todos los años, mensuales del año actual y anterior, tiendas y marcas. No digas que no tienes datos si los datos están en el contexto.
 Si el usuario pregunta por "este año", se refiere a {current_year}. Si pregunta por "el año pasado", es {prev_year}."""
 
 def _gather_context(filters):
@@ -685,24 +685,29 @@ def _gather_context(filters):
     except Exception as e:
         logger.error(f"Context year query error: {e}")
 
-    # Monthly trend current year
+    # Monthly trend current year AND previous year
     try:
         w, p = _build_where()
-        w.append(f"EXTRACT(YEAR FROM vplf.date_order)::int = %s")
-        p.append(current_year)
+        ph = ','.join(['%s', '%s'])
+        w.append(f"EXTRACT(YEAR FROM vplf.date_order)::int IN ({ph})")
+        p.extend([current_year, prev_year])
         sql = f"""
-            SELECT EXTRACT(MONTH FROM vplf.date_order)::int as month,
+            SELECT EXTRACT(YEAR FROM vplf.date_order)::int as year,
+                   EXTRACT(MONTH FROM vplf.date_order)::int as month,
                    COALESCE(SUM(vplf.price_subtotal), 0) as total_sales,
                    COUNT(DISTINCT vplf.order_id) as order_count,
                    COALESCE(SUM(vplf.qty), 0) as units_sold
             {vpl_from(need_store)}
             WHERE {" AND ".join(w)}
-            GROUP BY month ORDER BY month
+            GROUP BY year, month ORDER BY year, month
         """
         months_names = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
         monthly = query_pg(sql, p)
-        monthly_str = " | ".join([f"{months_names[r['month']-1]}: S/{r['total_sales']:,.2f} ({r['units_sold']:.0f} uds)" for r in monthly])
-        context_parts.append(f"Mensual {current_year}: {monthly_str}")
+        for yr in [prev_year, current_year]:
+            yr_data = [r for r in monthly if r['year'] == yr]
+            if yr_data:
+                monthly_str = " | ".join([f"{months_names[r['month']-1]}: S/{r['total_sales']:,.2f} ({r['units_sold']:.0f} uds, {r['order_count']} ord)" for r in yr_data])
+                context_parts.append(f"Mensual {yr}: {monthly_str}")
     except Exception as e:
         logger.error(f"Context monthly query error: {e}")
 
