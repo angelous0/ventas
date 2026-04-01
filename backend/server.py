@@ -6,14 +6,17 @@ import os
 import logging
 import time
 import hashlib
+import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime, timezone
 from decimal import Decimal
 from io import BytesIO
+from pydantic import BaseModel
 import psycopg2
 from psycopg2 import pool as pg_pool_module
 from contextlib import contextmanager
+from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -541,6 +544,253 @@ def get_store_timeline(
         if r.get('period'):
             r['period'] = r['period'][:10] if isinstance(r['period'], str) else r['period']
     return rows
+
+# ── Chat / AI Assistant ──────────────────────────────────
+
+SYSTEM_PROMPT_BASE = """Eres un experto analista de ventas de Ambission Industries S.A.C., una empresa peruana de retail de ropa.
+Tienes acceso a datos de ventas reales del sistema POS (punto de venta). Los datos ya excluyen cancelaciones y reservas.
+
+FECHA ACTUAL: {current_date}. El año actual es {current_year}.
+
+Campos disponibles:
+- Ventas en Soles (S/)
+- Ordenes/transacciones
+- Unidades vendidas
+- Ticket promedio
+- Marcas de productos
+- Tipos de productos (tipo_resumen)
+- Tiendas/puntos de venta
+- Clientes
+- Datos desde 2018 hasta {current_year}
+
+Responde siempre en español. Sé conciso, analítico y orientado a insights de negocio.
+Cuando presentes datos numéricos, usa formato con separadores de miles y S/ para montos.
+Usa los datos proporcionados en el contexto para responder. No inventes datos.
+Si el usuario pregunta por "este año", se refiere a {current_year}. Si pregunta por "el año pasado", es {prev_year}."""
+
+def _gather_context(filters):
+    """Query relevant data to give the AI context based on active filters."""
+    fp_marca = filters.get('marca')
+    fp_tipo = filters.get('tipo')
+    fp_store = filters.get('store')
+    current_year = datetime.now().year
+    prev_year = current_year - 1
+
+    context_parts = []
+
+    # Filters info
+    filter_info = []
+    if fp_marca:
+        filter_info.append(f"Marca: {fp_marca}")
+    if fp_tipo:
+        filter_info.append(f"Tipo: {fp_tipo}")
+    if fp_store:
+        filter_info.append(f"Tienda: {fp_store}")
+    if filter_info:
+        context_parts.append(f"Filtros activos: {', '.join(filter_info)}")
+    else:
+        context_parts.append("Filtros activos: Ninguno (datos globales)")
+
+    need_store = fp_store is not None
+
+    def _build_where():
+        w = [VPL_BASE]
+        p = []
+        add_filters(w, p, marca=fp_marca, tipo=fp_tipo, store=fp_store)
+        return w, p
+
+    # Sales by year (all years)
+    try:
+        w, p = _build_where()
+        sql = f"""
+            SELECT EXTRACT(YEAR FROM vplf.date_order)::int as year,
+                   COALESCE(SUM(vplf.price_subtotal), 0) as total_sales,
+                   COUNT(DISTINCT vplf.order_id) as order_count,
+                   COALESCE(SUM(vplf.qty), 0) as units_sold
+            {vpl_from(need_store)}
+            WHERE {" AND ".join(w)}
+            GROUP BY year ORDER BY year
+        """
+        by_year = query_pg(sql, p)
+        years_str = " | ".join([f"{r['year']}: S/{r['total_sales']:,.2f} ({r['order_count']} ord, {r['units_sold']:.0f} uds)" for r in by_year])
+        context_parts.append(f"Ventas anuales: {years_str}")
+    except Exception as e:
+        logger.error(f"Context year query error: {e}")
+
+    # Monthly trend current year
+    try:
+        w, p = _build_where()
+        w.append(f"EXTRACT(YEAR FROM vplf.date_order)::int = %s")
+        p.append(current_year)
+        sql = f"""
+            SELECT EXTRACT(MONTH FROM vplf.date_order)::int as month,
+                   COALESCE(SUM(vplf.price_subtotal), 0) as total_sales,
+                   COUNT(DISTINCT vplf.order_id) as order_count,
+                   COALESCE(SUM(vplf.qty), 0) as units_sold
+            {vpl_from(need_store)}
+            WHERE {" AND ".join(w)}
+            GROUP BY month ORDER BY month
+        """
+        months_names = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+        monthly = query_pg(sql, p)
+        monthly_str = " | ".join([f"{months_names[r['month']-1]}: S/{r['total_sales']:,.2f} ({r['units_sold']:.0f} uds)" for r in monthly])
+        context_parts.append(f"Mensual {current_year}: {monthly_str}")
+    except Exception as e:
+        logger.error(f"Context monthly query error: {e}")
+
+    # Sales by store current year
+    try:
+        w, p = _build_where()
+        w.append(f"EXTRACT(YEAR FROM vplf.date_order)::int = %s")
+        p.append(current_year)
+        sql = f"""
+            SELECT SPLIT_PART(sl.complete_name, '/', 2) as store_code,
+                   COALESCE(SUM(vplf.price_subtotal), 0) as total_sales,
+                   COUNT(DISTINCT vplf.order_id) as order_count,
+                   COALESCE(SUM(vplf.qty), 0) as units_sold
+            {vpl_from(need_store=True)}
+            WHERE {" AND ".join(w)}
+            GROUP BY store_code
+            HAVING SPLIT_PART(sl.complete_name, '/', 2) IS NOT NULL AND SPLIT_PART(sl.complete_name, '/', 2) != ''
+            ORDER BY total_sales DESC
+        """
+        by_store = query_pg(sql, p)
+        stores_str = " | ".join([f"{r['store_code']}: S/{r['total_sales']:,.2f} ({r['order_count']} ord)" for r in by_store[:10]])
+        context_parts.append(f"Tiendas {current_year}: {stores_str}")
+    except Exception as e:
+        logger.error(f"Context store query error: {e}")
+
+    # Sales by marca current year
+    try:
+        w, p = _build_where()
+        w.append(f"EXTRACT(YEAR FROM vplf.date_order)::int = %s")
+        p.append(current_year)
+        w.append("vplf.marca IS NOT NULL")
+        sql = f"""
+            SELECT vplf.marca,
+                   COALESCE(SUM(vplf.price_subtotal), 0) as total_sales,
+                   COALESCE(SUM(vplf.qty), 0) as units_sold
+            {vpl_from(need_store)}
+            WHERE {" AND ".join(w)}
+            GROUP BY vplf.marca ORDER BY total_sales DESC
+        """
+        by_marca = query_pg(sql, p)
+        marcas_str = " | ".join([f"{r['marca']}: S/{r['total_sales']:,.2f} ({r['units_sold']:.0f} uds)" for r in by_marca[:10]])
+        context_parts.append(f"Marcas {current_year}: {marcas_str}")
+    except Exception as e:
+        logger.error(f"Context marca query error: {e}")
+
+    return "\n".join(context_parts)
+
+def _run_custom_query(question):
+    """Run a specific date-based query if the user asks about specific dates."""
+    import re
+    date_patterns = re.findall(r'(\d{1,2})\s*(?:de\s+)?(?:del?\s+)?(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s*(?:de\s+|del?\s+)?(\d{4})', question.lower())
+    month_map = {'enero':'01','febrero':'02','marzo':'03','abril':'04','mayo':'05','junio':'06',
+                 'julio':'07','agosto':'08','septiembre':'09','octubre':'10','noviembre':'11','diciembre':'12'}
+
+    if date_patterns:
+        results = []
+        for day, month_name, year in date_patterns:
+            date_str = f"{year}-{month_map[month_name]}-{int(day):02d}"
+            sql = f"""
+                SELECT SPLIT_PART(sl.complete_name, '/', 2) as store_code,
+                       COALESCE(SUM(vplf.price_subtotal), 0) as total_sales,
+                       COUNT(DISTINCT vplf.order_id) as order_count,
+                       COALESCE(SUM(vplf.qty), 0) as units_sold
+                {vpl_from(need_store=True)}
+                WHERE {VPL_BASE} AND vplf.date_order::date = %s
+                    AND SPLIT_PART(sl.complete_name, '/', 2) IS NOT NULL
+                    AND SPLIT_PART(sl.complete_name, '/', 2) != ''
+                GROUP BY store_code ORDER BY total_sales DESC
+            """
+            rows = query_pg(sql, [date_str], use_cache=True)
+            if rows:
+                total = sum(r['total_sales'] for r in rows)
+                detail = ", ".join([f"{r['store_code']}: S/{r['total_sales']:,.2f} ({r['order_count']} ord, {r['units_sold']:.0f} uds)" for r in rows])
+                results.append(f"Fecha {date_str}: TOTAL S/{total:,.2f} | Detalle: {detail}")
+            else:
+                results.append(f"Fecha {date_str}: SIN VENTAS registradas")
+        return "\n".join(results)
+    return None
+
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    filters: Optional[dict] = None
+
+class ChatResponse(BaseModel):
+    response: str
+    session_id: str
+
+chat_sessions = {}
+
+@api_router.post("/chat")
+async def chat_endpoint(req: ChatRequest):
+    session_id = req.session_id or str(uuid.uuid4())
+
+    # Gather data context
+    filters = req.filters or {}
+    data_context = _gather_context(filters)
+
+    # Check for specific date queries
+    custom_data = _run_custom_query(req.message)
+    if custom_data:
+        data_context += f"\n\nDatos específicos consultados:\n{custom_data}"
+
+    current_year = datetime.now().year
+    system_prompt = SYSTEM_PROMPT_BASE.format(
+        current_date=datetime.now().strftime('%d/%m/%Y'),
+        current_year=current_year,
+        prev_year=current_year - 1
+    )
+    full_system = f"{system_prompt}\n\n--- DATOS DE CONTEXTO ACTUAL ---\n{data_context}"
+
+    # Get or create chat session
+    if session_id not in chat_sessions:
+        chat = LlmChat(
+            api_key=os.environ['EMERGENT_LLM_KEY'],
+            session_id=session_id,
+            system_message=full_system
+        ).with_model("openai", "gpt-4o-mini")
+        chat_sessions[session_id] = chat
+    else:
+        chat = chat_sessions[session_id]
+        chat.system_message = full_system
+
+    user_msg = UserMessage(text=req.message)
+    response_text = await chat.send_message(user_msg)
+
+    # Save to MongoDB for persistence
+    await db.chat_messages.insert_one({
+        "session_id": session_id,
+        "role": "user",
+        "content": req.message,
+        "filters": filters,
+        "ts": datetime.now(timezone.utc).isoformat()
+    })
+    await db.chat_messages.insert_one({
+        "session_id": session_id,
+        "role": "assistant",
+        "content": response_text,
+        "ts": datetime.now(timezone.utc).isoformat()
+    })
+
+    return ChatResponse(response=response_text, session_id=session_id)
+
+@api_router.get("/chat/history")
+async def get_chat_history(session_id: str = Query(...)):
+    messages = await db.chat_messages.find(
+        {"session_id": session_id},
+        {"_id": 0, "role": 1, "content": 1, "ts": 1}
+    ).sort("ts", 1).to_list(100)
+    return messages
+
+@api_router.post("/chat/new")
+async def new_chat_session():
+    session_id = str(uuid.uuid4())
+    return {"session_id": session_id}
 
 @api_router.get("/cache/clear")
 def clear_cache():

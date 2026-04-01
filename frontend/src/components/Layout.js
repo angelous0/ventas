@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, TrendingUp, Package, Store, Users, Sun, Moon, X } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Package, Store, Users, Sun, Moon, X, MessageSquare } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useFilters } from '../context/FilterContext';
 import { Button } from '../components/ui/button';
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/productos', icon: Package, label: 'Productos' },
   { to: '/tiendas', icon: Store, label: 'Tiendas' },
   { to: '/clientes', icon: Users, label: 'Clientes' },
+  { to: '/asistente', icon: MessageSquare, label: 'Asistente IA' },
 ];
 
 export default function Layout() {
