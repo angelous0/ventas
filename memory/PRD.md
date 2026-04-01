@@ -8,6 +8,7 @@ Build a CRM reports module that connects to an external PostgreSQL database (Odo
 - **Frontend**: React + Tailwind CSS + shadcn/ui + recharts
 - **Data Source**: PostgreSQL views (v_pos_line_full) + raw tables
 - **Cache**: In-memory TTL cache (2 min) for query results
+- **AI Chat**: GPT-4o-mini via emergentintegrations library + MongoDB for message persistence
 
 ## User Personas
 - **Primary**: Business owner/manager at Ambission Industries S.A.C. (Peruvian clothing retail)
@@ -19,6 +20,7 @@ Build a CRM reports module that connects to an external PostgreSQL database (Odo
 - Export to Excel
 - Light/dark mode toggle
 - Temporal store tracking by day/week/month (amount + quantity)
+- AI chat assistant for natural language sales queries
 
 ## What's Been Implemented
 
@@ -35,19 +37,25 @@ Build a CRM reports module that connects to an external PostgreSQL database (Odo
 - Connection pool optimization
 
 ### Iteration 3 (2026-03-25)
-- **Store temporal tracking**: New `/api/store-timeline` endpoint with day/week/month granularity
-- **Stores page redesign**: Year selector, store multi-select badges, granularity controls (Dia/Semana/Mes), metric toggle (Dinero/Cantidad)
-- **Timeline line chart**: Multi-store comparison over time with color-coded lines
-- **Timeline data table**: Period-based detail with Ventas and Unidades per store
-- **Cumulative sales chart** added to Sales Analysis page
+- Store temporal tracking: `/api/store-timeline` with day/week/month granularity
+- Stores page: year selector, store badges, granularity/metric controls, timeline chart & table
+- Cumulative sales chart in Sales Analysis
+
+### Iteration 4 (2026-03-25)
+- **AI Chat Assistant**: Dedicated `/asistente` page with GPT-4o-mini integration
+- Natural language queries on sales data with real-time DB context
+- Specific date query detection (e.g., "17 de abril del 2025")
+- Filter-aware context (respects active marca/tipo/tienda filters)
+- Chat history persistence in MongoDB
+- Suggestion buttons for common queries
+- Session management with "Nueva conversacion" button
 
 ## Data Verification
 - **106,037 valid sales** (real) out of 140,380 total orders
-- Filtering out: 7,731 cancelled + 7,729 order_cancelled + 30,785 reservas
 - Data spans 2018-2026
 
 ## Known Limitation
-- `x_tipo_resumen` field does NOT exist in the synced PostgreSQL mirror database. Only `tipo` from product_template is available (using `tipo_resumen` field).
+- `x_tipo_resumen` not in synced PostgreSQL; using `tipo_resumen` from product_template
 
 ## Prioritized Backlog
 ### P1
@@ -59,3 +67,4 @@ Build a CRM reports module that connects to an external PostgreSQL database (Odo
 - [ ] Dashboard auto-refresh
 - [ ] Individual product/SKU analysis
 - [ ] Mobile responsive optimization
+- [ ] Chat session cleanup for memory management
