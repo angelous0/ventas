@@ -8,8 +8,8 @@ Build a CRM reports module that connects to an external PostgreSQL database (Odo
 - **Frontend**: React + Tailwind CSS + shadcn/ui + recharts
 - **Data Source**: PostgreSQL views (v_pos_line_full) + raw tables
 - **Cache**: In-memory TTL cache (2 min) for query results
-- **AI Chat**: GPT-4o-mini via emergentintegrations library + MongoDB for message persistence
-- **Settings**: MongoDB collection `settings` for user config (API keys)
+- **AI Chat**: GPT-4o-mini via emergentintegrations library
+- **App Data**: PostgreSQL tables `app_settings` and `chat_messages` (same DB as Odoo data)
 
 ## User Personas
 - **Primary**: Business owner/manager at Ambission Industries S.A.C. (Peruvian clothing retail)
@@ -22,19 +22,13 @@ Build a CRM reports module that connects to an external PostgreSQL database (Odo
 - Light/dark mode toggle
 - Temporal store tracking by day/week/month (amount + quantity)
 - AI chat assistant for natural language sales queries
-- User-configurable OpenAI API key
+- User-configurable OpenAI API key (stored in PostgreSQL)
 
 ## What's Been Implemented
 
-### Iteration 1 (2026-03-24)
-- Full dashboard with KPIs, charts, 5 pages
-- Backend with 13+ API endpoints
-- Excel export, dark mode
-
-### Iteration 2 (2026-03-24)
-- Multi-select filters for marca, tipo, tienda
-- "Hasta la fecha" toggle for fair YoY comparison
-- In-memory cache (2-minute TTL)
+### Iteration 1-2 (2026-03-24)
+- Full dashboard with KPIs, charts, 6 pages (Dashboard, Ventas, Productos, Tiendas, Clientes, Asistente IA)
+- Multi-select filters, "Hasta la fecha" toggle, in-memory cache
 
 ### Iteration 3 (2026-03-25)
 - Store temporal tracking with day/week/month granularity
@@ -42,14 +36,12 @@ Build a CRM reports module that connects to an external PostgreSQL database (Odo
 
 ### Iteration 4 (2026-03-25)
 - AI Chat Assistant (GPT-4o-mini) with real-time DB context
-- Specific date query detection
-- Filter-aware context, session management
+- Configurable OpenAI API Key via UI
 
 ### Iteration 5 (2026-03-25)
-- **Configurable OpenAI API Key**: Settings panel in Asistente page
-- User can paste their own OpenAI API key, saved to MongoDB
-- Key is masked in UI, can be removed to revert to default Emergent key
-- Backend endpoints: GET/POST `/api/settings/api-key`
+- **Migrated all app data from MongoDB to PostgreSQL**: settings and chat_messages tables
+- API key and chat history now stored in user's own PostgreSQL database
+- Tables auto-created on startup (`app_settings`, `chat_messages`)
 
 ## Prioritized Backlog
 ### P1
@@ -61,4 +53,3 @@ Build a CRM reports module that connects to an external PostgreSQL database (Odo
 - [ ] Dashboard auto-refresh
 - [ ] Individual product/SKU analysis
 - [ ] Mobile responsive optimization
-- [ ] Chat session cleanup for memory management

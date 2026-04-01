@@ -145,6 +145,74 @@ def add_filters(where, params, start_date=None, end_date=None, marca=None, tipo=
         where.append(f"TO_CHAR({date_col}, 'MM-DD') <= %s")
         params.append(ytd_day)
 
+# ── Init app tables in PostgreSQL ────────────────────────
+def _init_app_tables():
+    conn = pg_pool.getconn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key VARCHAR(100) PRIMARY KEY,
+                    value TEXT,
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id SERIAL PRIMARY KEY,
+                    session_id VARCHAR(100) NOT NULL,
+                    role VARCHAR(20) NOT NULL,
+                    content TEXT NOT NULL,
+                    filters TEXT,
+                    ts TIMESTAMP DEFAULT NOW()
+                )
+            """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_messages(session_id, ts)")
+            conn.commit()
+    finally:
+        pg_pool.putconn(conn)
+
+try:
+    _init_app_tables()
+    logger.info("App tables initialized in PostgreSQL")
+except Exception as e:
+    logger.warning(f"Could not init app tables: {e}")
+
+# ── Helpers for app data (settings/chat) via PostgreSQL ──
+
+def _pg_get_setting(key):
+    rows = query_pg("SELECT value FROM app_settings WHERE key = %s", [key], use_cache=False)
+    return rows[0]['value'] if rows else None
+
+def _pg_set_setting(key, value):
+    with get_pg() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO app_settings (key, value, updated_at) VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, [key, value])
+            conn.commit()
+
+def _pg_delete_setting(key):
+    with get_pg() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM app_settings WHERE key = %s", [key])
+            conn.commit()
+
+def _pg_save_chat_message(session_id, role, content, filters_str=None):
+    with get_pg() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO chat_messages (session_id, role, content, filters, ts) VALUES (%s, %s, %s, %s, NOW())
+            """, [session_id, role, content, filters_str])
+            conn.commit()
+
+def _pg_get_chat_history(session_id):
+    return query_pg(
+        "SELECT role, content, ts::text as ts FROM chat_messages WHERE session_id = %s ORDER BY ts",
+        [session_id], use_cache=False
+    )
+
 # ── Endpoints ────────────────────────────────────────────
 
 @api_router.get("/")
@@ -747,9 +815,9 @@ async def chat_endpoint(req: ChatRequest):
     )
     full_system = f"{system_prompt}\n\n--- DATOS DE CONTEXTO ACTUAL ---\n{data_context}"
 
-    # Check for custom API key
-    custom_key_doc = await db.settings.find_one({"key": "openai_api_key"}, {"_id": 0})
-    api_key = (custom_key_doc.get("value") if custom_key_doc and custom_key_doc.get("value") else os.environ['EMERGENT_LLM_KEY'])
+    # Check for custom API key from PostgreSQL
+    custom_key = _pg_get_setting("openai_api_key")
+    api_key = custom_key if custom_key else os.environ['EMERGENT_LLM_KEY']
 
     # Get or create chat session
     if session_id not in chat_sessions:
@@ -766,30 +834,17 @@ async def chat_endpoint(req: ChatRequest):
     user_msg = UserMessage(text=req.message)
     response_text = await chat.send_message(user_msg)
 
-    # Save to MongoDB for persistence
-    await db.chat_messages.insert_one({
-        "session_id": session_id,
-        "role": "user",
-        "content": req.message,
-        "filters": filters,
-        "ts": datetime.now(timezone.utc).isoformat()
-    })
-    await db.chat_messages.insert_one({
-        "session_id": session_id,
-        "role": "assistant",
-        "content": response_text,
-        "ts": datetime.now(timezone.utc).isoformat()
-    })
+    # Save to PostgreSQL
+    import json as json_mod
+    filters_str = json_mod.dumps(filters) if filters else None
+    _pg_save_chat_message(session_id, "user", req.message, filters_str)
+    _pg_save_chat_message(session_id, "assistant", response_text)
 
     return ChatResponse(response=response_text, session_id=session_id)
 
 @api_router.get("/chat/history")
-async def get_chat_history(session_id: str = Query(...)):
-    messages = await db.chat_messages.find(
-        {"session_id": session_id},
-        {"_id": 0, "role": 1, "content": 1, "ts": 1}
-    ).sort("ts", 1).to_list(100)
-    return messages
+def get_chat_history(session_id: str = Query(...)):
+    return _pg_get_chat_history(session_id)
 
 @api_router.post("/chat/new")
 async def new_chat_session():
@@ -797,24 +852,21 @@ async def new_chat_session():
     return {"session_id": session_id}
 
 @api_router.get("/settings/api-key")
-async def get_api_key_status():
-    doc = await db.settings.find_one({"key": "openai_api_key"}, {"_id": 0})
-    if doc and doc.get("value"):
-        masked = doc["value"][:7] + "..." + doc["value"][-4:]
+def get_api_key_status():
+    value = _pg_get_setting("openai_api_key")
+    if value:
+        masked = value[:7] + "..." + value[-4:]
         return {"has_key": True, "masked": masked}
     return {"has_key": False, "masked": None}
 
 @api_router.post("/settings/api-key")
-async def save_api_key(req: dict):
+def save_api_key(req: dict):
     api_key = req.get("api_key", "").strip()
     if not api_key:
-        await db.settings.delete_one({"key": "openai_api_key"})
+        _pg_delete_setting("openai_api_key")
+        chat_sessions.clear()
         return {"status": "removed"}
-    await db.settings.update_one(
-        {"key": "openai_api_key"},
-        {"$set": {"key": "openai_api_key", "value": api_key, "updated": datetime.now(timezone.utc).isoformat()}},
-        upsert=True
-    )
+    _pg_set_setting("openai_api_key", api_key)
     chat_sessions.clear()
     return {"status": "saved"}
 
