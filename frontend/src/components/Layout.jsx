@@ -1,5 +1,5 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { Button } from './ui/button';
@@ -30,8 +30,13 @@ import {
   PanelLeft,
 } from 'lucide-react';
 
+// Cada sección tiene un `area` que se usa para filtrar según el rol del
+// usuario logueado. Los roles definidos en backend (auth_utils.ROL_AREAS):
+//   - admin / usuario          → ven todo
+//   - inventario_viewer        → solo INVENTARIO + CONFIG (topes)
+//   - ventas_viewer            → solo VENTAS + RESERVAS
 const navItems = [
-  { section: 'VENTAS', items: [
+  { section: 'VENTAS', area: 'ventas', items: [
     { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
     { to: '/clasificacion', label: 'Explorador clasificación', icon: Layers },
     { to: '/productos', label: 'Productos', icon: Package },
@@ -41,30 +46,67 @@ const navItems = [
     { to: '/departamentos', label: 'Departamentos', icon: MapPin },
     { to: '/tendencias', label: 'Tendencias', icon: TrendingUp },
   ]},
-  { section: 'INVENTARIO', items: [
+  { section: 'INVENTARIO', area: 'inventario', items: [
     { to: '/reposicion', label: 'Reposición', icon: Truck },
     { to: '/stock', label: 'Stock', icon: Boxes },
     { to: '/produccion', label: 'Producción · Pivot', icon: Factory },
     { to: '/reporte-stock', label: 'Reporte stock detallado', icon: FileText },
   ]},
-  { section: 'RESERVAS', items: [
+  { section: 'RESERVAS', area: 'ventas', items: [
     { to: '/reservas', label: 'Pendientes', icon: Clock },
   ]},
-  { section: 'CONFIG', items: [
+  { section: 'CONFIG', area: 'inventario', items: [
     { to: '/config/topes-stock', label: 'Topes de stock', icon: Sliders },
     { to: '/alertas', label: 'Alertas (config)', icon: Bell },
   ]},
 ];
 
+// Mapeo rol → áreas permitidas (debe coincidir con backend/auth_utils.ROL_AREAS).
+// null/undefined = acceso total. Roles desconocidos también ven todo (compat).
+const ROL_AREAS = {
+  admin:              null,
+  usuario:            null,
+  inventario_viewer:  new Set(['inventario']),
+  ventas_viewer:      new Set(['ventas']),
+};
+
+// Para cada rol, página de inicio recomendada cuando entra logueado.
+const ROL_HOME = {
+  inventario_viewer: '/reposicion',
+  ventas_viewer:     '/',
+};
+
 export const Layout = () => {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('ventas_sidebar_collapsed') === '1');
 
   useEffect(() => {
     localStorage.setItem('ventas_sidebar_collapsed', collapsed ? '1' : '0');
   }, [collapsed]);
+
+  // Filtrar secciones del sidebar según rol del usuario.
+  const allowedAreas = ROL_AREAS[user?.rol];  // undefined si rol desconocido → acceso total
+  const visibleNavItems = useMemo(() => {
+    if (allowedAreas == null) return navItems;  // admin / usuario / desconocido
+    return navItems.filter(g => allowedAreas.has(g.area));
+  }, [allowedAreas]);
+
+  // Si el usuario aterriza en una ruta para la que no tiene permiso (incluye "/"
+  // que es el Dashboard de ventas), redirigir a su home por rol.
+  useEffect(() => {
+    if (allowedAreas == null) return;  // acceso total, nada que filtrar
+    const seccionActual = navItems.find(g => g.items.some(it =>
+      it.end ? location.pathname === it.to : location.pathname.startsWith(it.to)
+    ));
+    if (!seccionActual) return;  // ruta no mapeada (ej. /productos/:id) — dejar que el backend bloquee
+    if (!allowedAreas.has(seccionActual.area)) {
+      const home = ROL_HOME[user?.rol] || '/';
+      navigate(home, { replace: true });
+    }
+  }, [location.pathname, allowedAreas, user?.rol, navigate]);
 
   const handleLogout = () => {
     logout();
@@ -90,7 +132,7 @@ export const Layout = () => {
           </Button>
         </div>
         <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-          {navItems.map(group => (
+          {visibleNavItems.map(group => (
             <div key={group.section}>
               {!collapsed && (
                 <div className="px-3 py-1 text-[11px] font-semibold text-muted-foreground tracking-wider">

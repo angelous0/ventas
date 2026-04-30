@@ -59,3 +59,92 @@ async def get_current_user_optional(credentials: HTTPAuthorizationCredentials = 
         return await get_current_user(credentials)
     except Exception:
         return None
+
+
+# ============================================================
+# Control de acceso por rol
+# ============================================================
+# Cada rol tiene asignado un conjunto de "áreas" permitidas. Una área
+# corresponde a un prefijo de path bajo /api/. El endpoint /api/auth/* y
+# /api/health son siempre accesibles (autenticación y health-check).
+#
+# Para agregar un rol nuevo: añadir entrada al dict ROL_AREAS.
+# Para agregar un endpoint a un área: ver mapeo PATH_AREAS más abajo.
+# ============================================================
+
+# Roles → áreas permitidas. None = acceso total (admin).
+ROL_AREAS = {
+    'admin':              None,                    # acceso a todo
+    'usuario':            None,                    # default — acceso a todo (legacy)
+    'inventario_viewer':  {'inventario', 'reposicion', 'stock', 'produccion',
+                           'config_stock', 'catalogos'},
+    'ventas_viewer':      {'ventas', 'dashboard', 'productos', 'clientes',
+                           'tiendas', 'departamentos', 'tendencias',
+                           'pareto', 'clasificacion', 'reservas', 'catalogos'},
+}
+
+# Mapeo path-prefix → área. El prefijo se evalúa contra el path después
+# de /api/. Match más largo gana.
+PATH_AREAS = [
+    # Inventario / stock
+    ('inventario',       'inventario'),
+    ('stock',            'inventario'),
+    ('produccion',       'inventario'),
+    ('config/stock-max', 'config_stock'),
+    # Ventas
+    ('dashboard',        'dashboard'),
+    ('productos-odoo',   'productos'),
+    ('productos',        'productos'),
+    ('clientes',         'clientes'),
+    ('tiendas',          'tiendas'),
+    ('departamentos',    'departamentos'),
+    ('tendencias',       'tendencias'),
+    ('clasificacion',    'clasificacion'),
+    ('reservas',         'reservas'),
+    ('alertas',          'ventas'),
+    ('proyeccion',       'ventas'),
+    ('export',           'ventas'),
+    ('sync',             'ventas'),
+    # Catálogos: lectura compartida
+    ('catalogos',        'catalogos'),
+]
+
+
+def _path_to_area(path: str) -> str:
+    """Devuelve el área lógica de un path /api/<algo>. Ej: /api/inventario/snapshot → 'inventario'."""
+    # Quitar /api/ prefix
+    p = path.lstrip('/')
+    if p.startswith('api/'):
+        p = p[4:]
+    # Match el prefijo más específico (más largo) primero
+    p = p.lower()
+    matches = [(prefix, area) for prefix, area in PATH_AREAS if p.startswith(prefix.lower())]
+    if not matches:
+        return 'otros'
+    # Ordenar por longitud descendente del prefijo
+    matches.sort(key=lambda x: -len(x[0]))
+    return matches[0][1]
+
+
+def user_can_access_path(user: dict, path: str) -> bool:
+    """¿Este usuario tiene permiso para acceder a este path?
+
+    Reglas:
+    - /api/auth/* y /api/health siempre OK
+    - Si el rol no está en ROL_AREAS → asumir acceso total (compat con usuarios viejos)
+    - Si ROL_AREAS[rol] is None → acceso total
+    - Si el área del path está en el set permitido → OK; sino → 403
+    """
+    p = path.lstrip('/')
+    if p.startswith('api/'):
+        p = p[4:]
+    p = p.lower()
+    # Endpoints siempre permitidos para autenticarse y healthcheck
+    if p.startswith('auth/') or p == 'auth' or p == 'health' or p.startswith('health'):
+        return True
+    rol = (user or {}).get('rol') or 'usuario'
+    areas = ROL_AREAS.get(rol)
+    if areas is None:
+        return True  # Acceso total
+    area = _path_to_area(path)
+    return area in areas

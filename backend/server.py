@@ -82,6 +82,61 @@ async def shutdown():
     await close_pool()
 
 
+# ============================================================
+# Middleware de control de acceso por rol
+# ============================================================
+# Verifica el rol del usuario contra el path solicitado. Si no tiene
+# permiso, responde 403. Endpoints abiertos (auth, health, OPTIONS para
+# CORS preflight) pasan sin verificación.
+@app.middleware("http")
+async def role_access_middleware(request, call_next):
+    path = request.url.path
+    method = request.method
+
+    # CORS preflight, archivos estáticos, health, auth: pasan libres
+    if (method == "OPTIONS"
+        or not path.startswith("/api/")
+        or path.startswith("/api/auth/")
+        or path.startswith("/api/health")):
+        return await call_next(request)
+
+    # Tomar el token sin lanzar excepción aquí (los endpoints lo hacen igual con Depends)
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        # Sin token → dejar pasar; el endpoint con Depends(get_current_user) responderá 401
+        return await call_next(request)
+
+    try:
+        from jose import jwt as _jwt
+        from auth_utils import SECRET_KEY, ALGORITHM, user_can_access_path
+        token = auth_header.split(" ", 1)[1].strip()
+        payload = _jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            return await call_next(request)
+        # Cargar user del pool para conocer el rol
+        from db import get_pool as _gp
+        _pool = await _gp()
+        async with _pool.acquire() as _conn:
+            user_row = await _conn.fetchrow(
+                "SELECT id, username, rol, activo FROM produccion.prod_usuarios WHERE id = $1 AND activo = true",
+                user_id
+            )
+        if not user_row:
+            return await call_next(request)
+        if not user_can_access_path(dict(user_row), path):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": f"No autorizado: tu rol '{user_row['rol']}' no tiene acceso a {path}"},
+            )
+    except Exception:
+        # Si algo falla en el middleware (token inválido, etc.), dejar que el
+        # endpoint normal lo maneje vía Depends(get_current_user).
+        pass
+
+    return await call_next(request)
+
+
 _cors_origins_raw = os.environ.get("CORS_ORIGINS", "*")
 _cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 
