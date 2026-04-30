@@ -16,6 +16,9 @@ from db import get_pool
 
 router = APIRouter(prefix="/api/sync")
 
+# URL del backend Odoo. En localhost usa 127.0.0.1:8002. En EasyPanel/Docker
+# debe apuntar al servicio interno, ej. http://datos_odoo_backend:8002
+# (configurable vía variable de entorno).
 ODOO_BACKEND = os.environ.get("ODOO_BACKEND_URL", "http://127.0.0.1:8002")
 
 # Jobs relevantes para Ventas, en orden de prioridad de ejecución.
@@ -147,12 +150,20 @@ async def sync_trigger(body: TriggerInput, _u: dict = Depends(get_current_user))
                     "mensaje": data.get("message", ""),
                 })
             else:
+                # Detectar el caso típico "no puedo llegar al backend Odoo"
+                # para dar un mensaje accionable al operador.
+                err_msg = (err or 'sin respuesta')
+                if 'connect' in err_msg.lower() or 'refused' in err_msg.lower() or 'timeout' in err_msg.lower():
+                    err_msg = (
+                        f"No se pudo conectar al backend Odoo en {ODOO_BACKEND}. "
+                        f"Verificar variable ODOO_BACKEND_URL. Detalle: {err}"
+                    )
                 resultados.append({
                     "job_code": code,
                     "ok": False,
                     "rows": 0,
                     "duracion_s": round(elapsed, 1),
-                    "mensaje": f"Error: {(err or 'sin respuesta')[:200]}",
+                    "mensaje": f"Error: {err_msg[:300]}",
                 })
 
-    return {"resultados": resultados}
+    return {"resultados": resultados, "odoo_backend": ODOO_BACKEND}

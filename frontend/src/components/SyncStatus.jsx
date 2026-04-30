@@ -126,8 +126,9 @@ export default function SyncStatus({ collapsed = false }) {
 
   function renderDialog() {
     return (
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        {/* Header fijo arriba */}
+        <DialogHeader className="px-6 pt-6 pb-2 shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <RefreshCw className="h-5 w-5 text-primary" /> Estado de sincronización
           </DialogTitle>
@@ -136,7 +137,9 @@ export default function SyncStatus({ collapsed = false }) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        {/* Contenido scrollable: el min-h-0 + flex-1 hace que tome el alto restante
+            entre header y footer y respete max-h-[90vh] del DialogContent. */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 space-y-4 py-2">
           <div className={`p-3 rounded-md border ${
             status.ventas_severity === 'ok' ? 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800' :
             status.ventas_severity === 'warn' ? 'bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800' :
@@ -213,7 +216,8 @@ export default function SyncStatus({ collapsed = false }) {
           </div>
         </div>
 
-        <DialogFooter>
+        {/* Footer fijo abajo (siempre visible aunque haya scroll) */}
+        <DialogFooter className="px-6 py-4 border-t shrink-0 bg-background">
           <Button variant="outline" onClick={() => setOpen(false)} disabled={running}>Cerrar</Button>
           <Button onClick={trigger} disabled={running}>
             {running ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sincronizando...</> : <><RefreshCw className="mr-2 h-4 w-4" />Actualizar ahora</>}
