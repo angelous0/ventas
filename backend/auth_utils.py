@@ -77,10 +77,15 @@ ROL_AREAS = {
     'admin':              None,                    # acceso a todo
     'usuario':            None,                    # default — acceso a todo (legacy)
     'inventario_viewer':  {'inventario', 'reposicion', 'stock', 'produccion',
-                           'config_stock', 'catalogos'},
+                           'config_stock', 'catalogos',
+                           # reservas: ver pendientes
+                           'reservas',
+                           # sync: ver estado "Datos hace X" + botón "Actualizar ahora"
+                           'sync'},
     'ventas_viewer':      {'ventas', 'dashboard', 'productos', 'clientes',
                            'tiendas', 'departamentos', 'tendencias',
-                           'pareto', 'clasificacion', 'reservas', 'catalogos'},
+                           'pareto', 'clasificacion', 'reservas', 'catalogos',
+                           'sync'},
 }
 
 # Mapeo path-prefix → área. El prefijo se evalúa contra el path después
@@ -104,7 +109,8 @@ PATH_AREAS = [
     ('alertas',          'ventas'),
     ('proyeccion',       'ventas'),
     ('export',           'ventas'),
-    ('sync',             'ventas'),
+    # sync: estado y trigger de actualización. Compartido por inventario y ventas.
+    ('sync',             'sync'),
     # Catálogos: lectura compartida
     ('catalogos',        'catalogos'),
 ]

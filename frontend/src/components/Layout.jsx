@@ -52,7 +52,7 @@ const navItems = [
     { to: '/produccion', label: 'Producción · Pivot', icon: Factory },
     { to: '/reporte-stock', label: 'Reporte stock detallado', icon: FileText },
   ]},
-  { section: 'RESERVAS', area: 'ventas', items: [
+  { section: 'RESERVAS', area: 'reservas', items: [
     { to: '/reservas', label: 'Pendientes', icon: Clock },
   ]},
   { section: 'CONFIG', area: 'inventario', items: [
@@ -66,8 +66,10 @@ const navItems = [
 const ROL_AREAS = {
   admin:              null,
   usuario:            null,
-  inventario_viewer:  new Set(['inventario']),
-  ventas_viewer:      new Set(['ventas']),
+  // inventario_viewer también ve Reservas Pendientes y la sección Config
+  // (los topes de stock le aplican a su trabajo)
+  inventario_viewer:  new Set(['inventario', 'reservas']),
+  ventas_viewer:      new Set(['ventas', 'reservas']),
 };
 
 // Para cada rol, página de inicio recomendada cuando entra logueado.
