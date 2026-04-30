@@ -377,10 +377,26 @@ async def reporte_detallado(
         for t, s in c["tallas_stock"].items():
             totales_talla_total[t] = totales_talla_total.get(t, 0) + s
 
+    # Orden global de colores — el MISMO en todas las tablas (tiendas, taller,
+    # total). Se basa en el total global descendente. Si un color aparece en
+    # una tienda pero no en el total global (raro: AP solo aparece por tienda),
+    # se agrega al final ordenado por su total local.
+    orden_color_global = {c["color"]: i for i, c in enumerate(colores_total_list)}
+
+    def _ordenar_colores(colores_list):
+        """Ordena los colores siguiendo el orden global. Los huérfanos van al
+        final ordenados por -total para no romper la lectura."""
+        def key(c):
+            idx = orden_color_global.get(c["color"])
+            if idx is not None:
+                return (0, idx)
+            return (1, -c["total"])  # huérfanos al final, por total desc
+        return sorted(colores_list, key=key)
+
     # Tiendas: convertir colores dict → lista, calcular totales por talla
     pivot_tiendas_list = []
     for tienda, td in tiendas_dict.items():
-        colores_list = sorted(td["colores"].values(), key=lambda x: -x["total"])
+        colores_list = _ordenar_colores(list(td["colores"].values()))
         totales = {t: 0 for t in tallas_ordenadas}
         for c in colores_list:
             for t, s in c["tallas_stock"].items():
