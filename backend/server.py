@@ -60,8 +60,21 @@ async def db_interface_error_handler(request, exc):
 
 @app.on_event("startup")
 async def startup():
-    await get_pool()
-    await ensure_startup_ddl()
+    """Startup tolerante a fallos: NO crashea el container si la BD no está
+    disponible al arrancar. Logueamos el problema y dejamos que /api/health
+    reporte el estado. Así EasyPanel ve el container vivo y los logs muestran
+    el problema sin entrar en crash-loop.
+    """
+    import logging
+    try:
+        await get_pool()
+    except Exception as e:
+        logging.error(f"[startup] No se pudo crear el pool de BD: {type(e).__name__}: {e}")
+        logging.error("[startup] El server arranca igual; /api/health responderá 'degraded' hasta que la BD esté disponible.")
+    try:
+        await ensure_startup_ddl()
+    except Exception as e:
+        logging.error(f"[startup] ensure_startup_ddl falló (no crítico): {type(e).__name__}: {e}")
 
 
 @app.on_event("shutdown")

@@ -20,11 +20,16 @@ pool = None
 async def get_pool():
     global pool
     if pool is None or pool._closed:
+        # min_size=0 → NO crear conexiones eagerly al arrancar el pool.
+        # Esto evita que el startup se cuelgue 60s (timeout) si Postgres no
+        # responde inmediatamente. Las conexiones se crean on-demand cuando
+        # se hace acquire(). Mejor para deploys en EasyPanel/Docker donde
+        # el container puede arrancar antes que la red esté lista.
         pool = await asyncpg.create_pool(
             DATABASE_URL,
-            min_size=2,
+            min_size=0,
             max_size=10,
-            timeout=60,
+            timeout=10,           # 10s para acquire connection (era 60)
             command_timeout=30,
             max_inactive_connection_lifetime=30,
             server_settings={"search_path": "public,odoo,produccion"},
