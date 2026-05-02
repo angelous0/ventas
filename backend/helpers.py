@@ -116,11 +116,37 @@ AND {PRODUCTO_ESTADO_EXCLUIDO_WHERE}
 CLIENTE_SELECT = "COALESCE(po.x_cliente_principal, v.cuenta_partner_id)"
 
 # Reserva pendiente: la RESERVA está marcada, no se canceló, no se usó aún.
+#
+# NOTA — defensa contra sync desactualizado: el sync incremental de POS_ORDERS
+# a veces no detecta cambios en reserva_use_id (cuando una orden es modificada
+# por OTRA orden, Odoo no siempre marca write_date). Resultado: la reserva
+# queda con reserva_use_id=0 localmente aunque ya fue concretada.
+#
+# Como salvavidas, agregamos AND NOT EXISTS: si hay otra orden NO-reserva
+# (state='invoiced'/'paid'/'done') del MISMO cliente, MISMO monto, MISMA
+# tienda, en una ventana de [-7, +14] días, asumimos que esa orden concretó
+# la reserva → la sacamos del listado.
+#
+# Esto baja el ruido de ~4% de reservas "fantasma" sin requerir que el sync
+# esté 100% al día.
 RESERVA_PENDIENTE_WHERE = f"""
 v.reserva = true
 AND (v.is_cancelled = false OR v.is_cancelled IS NULL)
 AND (po.order_cancel = false OR po.order_cancel IS NULL)
 AND (v.reserva_use_id = 0 OR v.reserva_use_id IS NULL)
+AND NOT EXISTS (
+    SELECT 1 FROM odoo.pos_order po_concretada
+    WHERE po_concretada.amount_total = po.amount_total
+      AND po_concretada.location_id = po.location_id
+      AND COALESCE(po_concretada.x_cliente_principal, po_concretada.partner_id)
+          = COALESCE(po.x_cliente_principal, po.partner_id)
+      AND po_concretada.date_order BETWEEN po.date_order - INTERVAL '7 days'
+                                       AND po.date_order + INTERVAL '14 days'
+      AND po_concretada.odoo_id <> po.odoo_id
+      AND (po_concretada.reserva IS NOT TRUE)
+      AND po_concretada.state IN ('invoiced', 'paid', 'done')
+      AND (po_concretada.order_cancel IS NULL OR po_concretada.order_cancel = false)
+)
 AND {PRODUCTO_VALIDO_WHERE}
 """.strip()
 
