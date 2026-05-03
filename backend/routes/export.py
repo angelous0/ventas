@@ -387,3 +387,196 @@ async def export_ventas(
             "X-Filtros-Aplicados": "venta_real,palabras_excluidas,estado_excluido,purchase_ok_sin_marca",
         },
     )
+
+
+# ============================================================
+# Stock detalle a CSV
+# ============================================================
+@router.get("/stock-detalle")
+async def export_stock_detalle(
+    nivel: str = Query("detalle", description="detalle (modelo×color×talla×tienda) | grupo (marca·tipo·entalle·tela × tienda)"),
+    tiendas: Optional[str] = Query(None, description="x_nombre coma-separados. Vacío = todas las tiendas internas activas"),
+    marcas: Optional[str] = Query(None, description="UUIDs de marca coma-separados"),
+    tipos: Optional[str] = Query(None, description="UUIDs de tipo coma-separados"),
+    entalles: Optional[str] = Query(None, description="UUIDs de entalle coma-separados"),
+    telas: Optional[str] = Query(None, description="UUIDs de tela coma-separados"),
+    incluir_almacenes: bool = Query(True, description="Si false, excluye TALLER, AP, REMATE, ZAP (solo comerciales)"),
+    min_stock: int = Query(1, ge=0, description="Filtrar SKUs/grupos con stock >= N. Default 1 (excluye stock 0)"),
+    limit: int = Query(100000, le=500000),
+    _u: dict = Depends(get_current_user),
+):
+    """Stock actual a CSV con todos los filtros del módulo aplicados.
+
+    Niveles disponibles:
+
+    - **detalle**: una fila por (modelo, color, talla, tienda). Máxima
+      granularidad. Columnas: marca, tipo, entalle, tela, modelo, color,
+      talla, tienda, stock.
+      Volumen típico: ~30-100K filas sin filtros.
+
+    - **grupo**: una fila por (marca, tipo, entalle, tela, tienda).
+      Agregación a nivel grupo lógico. Columnas: marca, tipo, entalle,
+      tela, tienda, modelos, skus, stock.
+      Volumen típico: ~1-2K filas.
+
+    Filtros aplicados:
+    - sl.usage = 'internal' AND sl.active = true (defensivo)
+    - pp.active = true AND pt.active = true (variantes/templates vivos)
+    - q.qty > 0 (sólo locations con stock real)
+    - PRODUCTO_VALIDO_STOCK_WHERE: excluye correa/bolsa/saco/tallero, etc.
+    """
+    # Filtros de jerarquía → cláusulas extra del WHERE
+    params: list = []
+    where_extra = []
+
+    tiendas_list = _split_csv(tiendas)
+    if tiendas_list:
+        params.append(tiendas_list)
+        where_extra.append(f"sl.x_nombre = ANY(${len(params)}::text[])")
+
+    if not incluir_almacenes:
+        # Excluir locations que son almacenes/depósitos (no tiendas comerciales)
+        where_extra.append("sl.x_nombre NOT IN ('TALLER', 'AP', 'REMATE', 'ZAP', 'Fallados Qepo')")
+
+    for csv_str, col in [(marcas, "marca_id"), (tipos, "tipo_id"),
+                         (entalles, "entalle_id"), (telas, "tela_id")]:
+        ids = _split_csv(csv_str)
+        if ids:
+            params.append(ids)
+            where_extra.append(f"pe.{col} = ANY(${len(params)}::text[])")
+
+    where_jerarquia = (" AND " + " AND ".join(where_extra)) if where_extra else ""
+
+    # Patrones de productos prohibidos. Reuso PALABRAS_EXCLUIDAS de helpers.
+    from helpers import PALABRAS_EXCLUIDAS
+    patterns_sql = ",".join(f"'%{p}%'" for p in PALABRAS_EXCLUIDAS)
+    PRODUCTO_VALIDO = f"""
+    pt.odoo_id NOT IN (
+        SELECT odoo_id FROM odoo.product_template
+        WHERE name ILIKE ANY (ARRAY[{patterns_sql}])
+           OR (purchase_ok = true AND (marca IS NULL OR marca = ''))
+    )
+    AND NOT EXISTS (
+        SELECT 1 FROM produccion.prod_odoo_productos_enriq pe_excl
+        WHERE pe_excl.odoo_template_id = pt.odoo_id AND pe_excl.estado = 'excluido'
+    )
+    """.strip()
+
+    # Auto-match con catálogo (mismo patrón que /reposicion)
+    AUTO_MATCH_JOINS = """
+    LEFT JOIN produccion.prod_marcas ma ON ma.id = pe.marca_id
+    LEFT JOIN produccion.prod_tipos ti ON ti.id = pe.tipo_id
+    LEFT JOIN produccion.prod_entalles en ON en.id = pe.entalle_id
+    LEFT JOIN produccion.prod_telas te ON te.id = pe.tela_id
+    LEFT JOIN produccion.prod_marcas ma_auto
+        ON pe.marca_id IS NULL AND pt.marca <> ''
+        AND LOWER(TRIM(ma_auto.nombre)) = LOWER(TRIM(pt.marca))
+    LEFT JOIN produccion.prod_tipos ti_auto
+        ON pe.tipo_id IS NULL AND pt.tipo <> ''
+        AND LOWER(TRIM(ti_auto.nombre)) = LOWER(TRIM(SPLIT_PART(pt.tipo, ' ', 1)))
+    LEFT JOIN produccion.prod_entalles en_auto
+        ON pe.entalle_id IS NULL AND pt.entalle <> ''
+        AND LOWER(TRIM(en_auto.nombre)) = LOWER(TRIM(pt.entalle))
+    LEFT JOIN produccion.prod_telas te_auto
+        ON pe.tela_id IS NULL AND pt.tela <> ''
+        AND LOWER(TRIM(te_auto.nombre)) = LOWER(TRIM(pt.tela))
+    """
+
+    if nivel == "grupo":
+        params.append(min_stock)
+        idx_min = len(params)
+        sql = f"""
+        SELECT
+            COALESCE(ma.nombre, ma_auto.nombre, NULLIF(pt.marca, ''), '— sin marca —') AS marca,
+            COALESCE(ti.nombre, ti_auto.nombre, NULLIF(pt.tipo, ''), '— sin tipo —')   AS tipo,
+            COALESCE(en.nombre, en_auto.nombre, NULLIF(pt.entalle, ''), '— sin entalle —') AS entalle,
+            COALESCE(te.nombre, te_auto.nombre, NULLIF(pt.tela, ''), '— sin tela —')   AS tela,
+            sl.x_nombre AS tienda,
+            COUNT(DISTINCT pt.odoo_id) AS modelos,
+            COUNT(DISTINCT pp.odoo_id) AS skus,
+            SUM(q.qty)::int AS stock
+        FROM odoo.stock_quant q
+        JOIN odoo.product_product pp ON pp.odoo_id = q.product_id AND pp.active = true
+        JOIN odoo.product_template pt ON pt.odoo_id = pp.product_tmpl_id AND pt.active = true
+        JOIN odoo.stock_location sl ON sl.odoo_id = q.location_id
+        LEFT JOIN produccion.prod_odoo_productos_enriq pe ON pe.odoo_template_id = pt.odoo_id
+        {AUTO_MATCH_JOINS}
+        WHERE q.qty > 0
+          AND sl.usage = 'internal' AND sl.active = true
+          AND sl.x_nombre IS NOT NULL AND sl.x_nombre <> ''
+          AND {PRODUCTO_VALIDO}
+          {where_jerarquia}
+        GROUP BY 1, 2, 3, 4, 5
+        HAVING SUM(q.qty) >= ${idx_min}
+        ORDER BY stock DESC
+        LIMIT {limit};
+        """
+        headers = ["marca", "tipo", "entalle", "tela", "tienda", "modelos", "skus", "stock"]
+    else:  # detalle
+        params.append(min_stock)
+        idx_min = len(params)
+        sql = f"""
+        SELECT
+            COALESCE(ma.nombre, ma_auto.nombre, NULLIF(pt.marca, ''), '— sin marca —') AS marca,
+            COALESCE(ti.nombre, ti_auto.nombre, NULLIF(pt.tipo, ''), '— sin tipo —')   AS tipo,
+            COALESCE(en.nombre, en_auto.nombre, NULLIF(pt.entalle, ''), '— sin entalle —') AS entalle,
+            COALESCE(te.nombre, te_auto.nombre, NULLIF(pt.tela, ''), '— sin tela —')   AS tela,
+            pt.name AS modelo,
+            COALESCE(NULLIF(vf.color, ''), '— sin color —') AS color,
+            COALESCE(NULLIF(vf.talla, ''), '—') AS talla,
+            sl.x_nombre AS tienda,
+            SUM(q.qty)::int AS stock
+        FROM odoo.stock_quant q
+        JOIN odoo.product_product pp ON pp.odoo_id = q.product_id AND pp.active = true
+        JOIN odoo.product_template pt ON pt.odoo_id = pp.product_tmpl_id AND pt.active = true
+        JOIN odoo.stock_location sl ON sl.odoo_id = q.location_id
+        JOIN odoo.v_product_variant_flat vf ON vf.product_product_id = pp.odoo_id
+        LEFT JOIN produccion.prod_odoo_productos_enriq pe ON pe.odoo_template_id = pt.odoo_id
+        {AUTO_MATCH_JOINS}
+        WHERE q.qty > 0
+          AND sl.usage = 'internal' AND sl.active = true
+          AND sl.x_nombre IS NOT NULL AND sl.x_nombre <> ''
+          AND {PRODUCTO_VALIDO}
+          {where_jerarquia}
+        GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
+        HAVING SUM(q.qty) >= ${idx_min}
+        ORDER BY marca, tipo, entalle, tela, modelo, color, talla, tienda
+        LIMIT {limit};
+        """
+        headers = ["marca", "tipo", "entalle", "tela", "modelo", "color", "talla", "tienda", "stock"]
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(sql, *params)
+
+    # Generar CSV
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(headers)
+    for r in rows:
+        d = dict(r)
+        row = []
+        for h in headers:
+            v = d.get(h)
+            if v is None:
+                row.append("")
+            elif hasattr(v, 'isoformat'):
+                row.append(v.isoformat())
+            else:
+                row.append(str(v))
+        writer.writerow(row)
+
+    csv_text = buf.getvalue()
+    today_iso = datetime.now().date().isoformat()
+    filename = f"stock-{nivel}-{today_iso}.csv"
+
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Filas": str(len(rows)),
+            "X-Nivel": nivel,
+            "X-Limite-Aplicado": str(limit),
+        },
+    )

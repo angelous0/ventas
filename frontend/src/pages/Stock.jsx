@@ -5,6 +5,7 @@ import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Loader2, Boxes, Search, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
+import ExportarStock from '../components/ExportarStock';
 
 export default function Stock() {
   const [grupos, setGrupos] = useState([]);
@@ -79,15 +80,18 @@ export default function Stock() {
 
   return (
     <div className="p-6 space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Boxes className="h-6 w-6 text-primary" /> Stock
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Agrupado por <span className="font-medium">marca · tipo · entalle · tela · hilo</span> ·
-          <span className="font-semibold text-foreground ml-1">{grupos.length}</span> combinaciones ·
-          Stock global: <span className="font-semibold text-foreground">{formatNum(stockGlobal)}</span> und.
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Boxes className="h-6 w-6 text-primary" /> Stock
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Agrupado por <span className="font-medium">marca · tipo · entalle · tela · hilo</span> ·
+            <span className="font-semibold text-foreground ml-1">{grupos.length}</span> combinaciones ·
+            Stock global: <span className="font-semibold text-foreground">{formatNum(stockGlobal)}</span> und.
+          </p>
+        </div>
+        <ExportarStock />
       </div>
 
       <div className="flex flex-wrap gap-2">

@@ -9,6 +9,7 @@ import { MultiSelect } from '../components/ui/multi-select';
 import { SearchableSelect } from '../components/ui/searchable-select';
 import { Loader2, FileText, Search, X, Warehouse, Filter, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import ExportarStock from '../components/ExportarStock';
 
 export default function ReporteStockDetallado() {
   // Filtros principales
@@ -242,6 +243,10 @@ export default function ReporteStockDetallado() {
           <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
           Actualizar
         </Button>
+
+        {/* Export CSV — preselecciona las tiendas filtradas en el reporte */}
+        <ExportarStock defaultTiendas={tiendasSel} />
+
 
         {data && (
           <div className="ml-auto flex items-center gap-3 text-[11px]">
