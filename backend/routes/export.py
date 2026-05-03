@@ -9,7 +9,7 @@ Aplica TODOS los filtros del módulo Ventas:
 import csv
 import io
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, Response
 from auth_utils import get_current_user
 from db import get_pool
@@ -18,13 +18,51 @@ from helpers import VENTA_REAL_FROM, VENTA_REAL_WHERE, CLIENTE_SELECT, parse_fec
 router = APIRouter(prefix="/api/export")
 
 
+def _split_csv(s: Optional[str]) -> List[str]:
+    """Convierte 'a,b,c' → ['a','b','c'] descartando vacíos."""
+    if not s:
+        return []
+    return [x.strip() for x in s.split(",") if x.strip()]
+
+
+def _add_jerarquia_filters(where_parts: list, params: list,
+                           marcas: Optional[str] = None,
+                           tipos: Optional[str] = None,
+                           entalles: Optional[str] = None,
+                           telas: Optional[str] = None,
+                           usa_pe_alias: bool = True):
+    """Añade al WHERE filtros multi-valor de marca/tipo/entalle/tela.
+
+    Acepta CSV de UUIDs del catálogo (no nombres). Filtra por pe.<dim>_id
+    cuando hay FK; queda implícito que SKUs sin clasificar no pasarán este
+    filtro (decisión consciente).
+
+    Si `usa_pe_alias=True` el filtro es directo sobre `pe.<col>`. Si no,
+    se asume que el caller ya hizo el LEFT JOIN bajo otro alias (no usado
+    actualmente).
+    """
+    pref = "pe."
+    for csv_str, col in [(marcas, "marca_id"), (tipos, "tipo_id"),
+                         (entalles, "entalle_id"), (telas, "tela_id")]:
+        ids = _split_csv(csv_str)
+        if ids:
+            params.append(ids)
+            where_parts.append(f"{pref}{col} = ANY(${len(params)}::text[])")
+
+
 @router.get("/ventas-detalle")
 async def export_ventas_detalle(
     desde: Optional[str] = None,
     hasta: Optional[str] = None,
     tienda: Optional[str] = None,
+    # Filtros legacy (single-id) — mantengo por compat, se mergean a los CSV.
     marca_id: Optional[str] = None,
     tipo_id: Optional[str] = None,
+    # Filtros multi (CSV de UUIDs del catálogo). Tienen prioridad.
+    marcas: Optional[str] = Query(None, description="UUIDs de marca, coma-separados"),
+    tipos: Optional[str] = Query(None, description="UUIDs de tipo, coma-separados"),
+    entalles: Optional[str] = Query(None, description="UUIDs de entalle, coma-separados"),
+    telas: Optional[str] = Query(None, description="UUIDs de tela, coma-separados"),
     nivel: str = Query("linea", description="linea (cada producto) | ticket (cada orden)"),
     limit: int = Query(50000, le=200000),
     _u: dict = Depends(get_current_user),
@@ -44,22 +82,29 @@ async def export_ventas_detalle(
         h_dt = h_dt.replace(hour=23, minute=59, second=59)
     d_dt = parse_fecha(desde) or (h_dt - timedelta(days=365))
 
+    # Mergear params legacy single → multi CSV
+    if marca_id and not marcas:
+        marcas = marca_id
+    if tipo_id and not tipos:
+        tipos = tipo_id
+
     params: list = [d_dt, h_dt]
     where = ["v.date_order >= $1", "v.date_order <= $2", VENTA_REAL_WHERE]
     if tienda:
         params.append(tienda)
         where.append(f"po.location_id IN (SELECT odoo_id FROM odoo.stock_location WHERE usage = 'internal' AND active = true AND x_nombre = ${len(params)})")
-    if marca_id:
-        params.append(marca_id)
-        where.append(f"pe.marca_id = ${len(params)}")
-    if tipo_id:
-        params.append(tipo_id)
-        where.append(f"pe.tipo_id = ${len(params)}")
+    # Filtros de jerarquía (marca/tipo/entalle/tela). Asume LEFT JOIN con
+    # produccion.prod_odoo_productos_enriq pe que ya está en ambas queries.
+    _add_jerarquia_filters(where, params, marcas, tipos, entalles, telas)
 
     where_sql = " AND ".join(where)
 
     if nivel == "ticket":
-        # Una fila por orden (igual al Excel oficial de Odoo POS)
+        # Una fila por orden (igual al Excel oficial de Odoo POS).
+        # El LEFT JOIN con prod_odoo_productos_enriq es necesario aún en el
+        # nivel ticket porque permite filtrar por marca/tipo/entalle/tela
+        # (los filtros de jerarquía operan a nivel línea aunque agreguemos
+        # por orden — una orden con CUALQUIER línea matching aparece).
         sql = f"""
         WITH lineas_filtradas AS (
             SELECT
@@ -68,6 +113,7 @@ async def export_ventas_detalle(
                 po.x_pagos, po.partner_id, po.vendedor_id, po.location_id,
                 po.state, po.company_key
             {VENTA_REAL_FROM}
+            LEFT JOIN produccion.prod_odoo_productos_enriq pe ON pe.odoo_template_id = v.product_tmpl_id
             WHERE {where_sql}
         )
         SELECT
@@ -181,6 +227,11 @@ async def export_ventas(
     hasta: Optional[str] = None,
     tienda: Optional[str] = None,
     company_key: Optional[str] = None,
+    # Filtros multi de jerarquía (CSV de UUIDs del catálogo)
+    marcas: Optional[str] = Query(None, description="UUIDs de marca, coma-separados"),
+    tipos: Optional[str] = Query(None, description="UUIDs de tipo, coma-separados"),
+    entalles: Optional[str] = Query(None, description="UUIDs de entalle, coma-separados"),
+    telas: Optional[str] = Query(None, description="UUIDs de tela, coma-separados"),
     _u: dict = Depends(get_current_user),
 ):
     """Genera CSV de ventas YTD agrupado según la granularidad pedida.
@@ -208,6 +259,13 @@ async def export_ventas(
     if tienda:
         params.append(tienda)
         where.append(f"po.location_id IN (SELECT odoo_id FROM odoo.stock_location WHERE usage = 'internal' AND active = true AND x_nombre = ${len(params)})")
+
+    # Filtros multi de marca/tipo/entalle/tela. Si se piden, hay que asegurar
+    # que el JOIN con prod_odoo_productos_enriq esté presente (lo agregamos
+    # más abajo en `extra_joins` cuando needs_joins=True; si los filtros se
+    # piden con agrupación 'mes' o 'dia' que no joinea, lo forzamos).
+    _add_jerarquia_filters(where, params, marcas, tipos, entalles, telas)
+    needs_pe_join = bool(marcas or tipos or entalles or telas)
 
     where_sql = " AND ".join(where)
 
@@ -251,8 +309,9 @@ async def export_ventas(
         order_by = "1, ventas DESC"
         headers = ["mes", "marca", "tipo", "entalle", "tela", "ventas", "unidades", "tickets", "clientes_unicos"]
 
-    # Joins necesarios solo si la agrupación los requiere
-    needs_joins = agrupacion not in ("mes", "dia")
+    # Joins necesarios solo si la agrupación los requiere O si hay filtro
+    # de marca/tipo/entalle/tela aplicado (necesitan pe.* en el WHERE).
+    needs_joins = agrupacion not in ("mes", "dia") or needs_pe_join
     extra_joins = ""
     if needs_joins:
         extra_joins = f"""
