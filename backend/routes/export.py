@@ -105,6 +105,11 @@ async def export_ventas_detalle(
         # nivel ticket porque permite filtrar por marca/tipo/entalle/tela
         # (los filtros de jerarquía operan a nivel línea aunque agreguemos
         # por orden — una orden con CUALQUIER línea matching aparece).
+        # IMPORTANTE: las 4 tablas que se LEFT JOINean abajo (stock_location,
+        # res_partner, res_users) y la CTE `lf` (vía pos_order) tienen TODAS
+        # una columna `company_key`. Por eso prefijamos todas las columnas
+        # del SELECT con `lf.` para evitar AmbiguousColumnError. Los alias sl/
+        # rp/uv ya estaban prefijados (x_nombre, name).
         sql = f"""
         WITH lineas_filtradas AS (
             SELECT
@@ -118,25 +123,25 @@ async def export_ventas_detalle(
         )
         SELECT
             -- Fecha en hora Lima
-            (MIN(date_order) AT TIME ZONE 'America/Lima')::timestamp AS fecha,
-            MAX(company_key) AS empresa,
-            order_id AS ticket,
-            MAX(tipo_comp) AS tipo_comprobante,
-            MAX(num_comp) AS num_comprobante,
+            (MIN(lf.date_order) AT TIME ZONE 'America/Lima')::timestamp AS fecha,
+            MAX(lf.company_key) AS empresa,
+            lf.order_id AS ticket,
+            MAX(lf.tipo_comp) AS tipo_comprobante,
+            MAX(lf.num_comp) AS num_comprobante,
             MAX(sl.x_nombre) AS tienda,
             MAX(rp.name) AS cliente,
             MAX(uv.name) AS vendedor,
-            MAX(x_pagos) AS pago,
-            MAX(state) AS estado,
-            SUM(qty)::numeric(14,2) AS qty_total,
+            MAX(lf.x_pagos) AS pago,
+            MAX(lf.state) AS estado,
+            SUM(lf.qty)::numeric(14,2) AS qty_total,
             COUNT(*) AS lineas,
-            MAX(amount_total)::numeric(14,2) AS total_con_igv
+            MAX(lf.amount_total)::numeric(14,2) AS total_con_igv
         FROM lineas_filtradas lf
         LEFT JOIN odoo.stock_location sl ON sl.odoo_id = lf.location_id
         LEFT JOIN odoo.res_partner rp ON rp.odoo_id = lf.partner_id
         LEFT JOIN odoo.res_users uv ON uv.odoo_id = lf.vendedor_id
-        GROUP BY order_id
-        ORDER BY MIN(date_order) DESC
+        GROUP BY lf.order_id
+        ORDER BY MIN(lf.date_order) DESC
         LIMIT {limit};
         """
         headers = ["fecha", "empresa", "ticket", "tipo_comprobante", "num_comprobante", "tienda",
